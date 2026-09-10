@@ -134,6 +134,8 @@ class JournalEntry(UUIDPrimaryKeyMixin, TimestampMixin, OwnedMixin, Base):
 class JournalLine(UUIDPrimaryKeyMixin, Base):
     __tablename__ = "journal_lines"
     __table_args__ = (
+        Index("ix_journal_lines_journal_id", "journal_id"),
+        Index("ix_journal_lines_account_id", "account_id"),
         CheckConstraint("debit >= 0 AND credit >= 0", name="nonnegative_amounts"),
         CheckConstraint(
             "(debit > 0 AND credit = 0) OR (credit > 0 AND debit = 0)",
@@ -200,6 +202,7 @@ class Invoice(UUIDPrimaryKeyMixin, TimestampMixin, OwnedMixin, Base):
 class InvoiceItem(UUIDPrimaryKeyMixin, Base):
     __tablename__ = "invoice_items"
     __table_args__ = (
+        Index("ix_invoice_items_invoice_id", "invoice_id"),
         CheckConstraint("quantity > 0", name="positive_quantity"),
         CheckConstraint(
             "unit_price >= 0 AND tax >= 0 AND line_subtotal >= 0 AND line_total >= 0",

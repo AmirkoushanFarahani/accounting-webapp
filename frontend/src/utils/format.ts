@@ -3,7 +3,7 @@ const numbers = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2, numbe
 const money = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2, numberingSystem: "latn" });
 const percents = new Intl.NumberFormat("en-US", { style: "percent", maximumFractionDigits: 1, numberingSystem: "latn" });
 export const formatNumber = (value: string | number | null | undefined) => numbers.format(Number(value ?? 0));
-export const formatMoney = (value: string | number | null | undefined) => money.format(Number(value ?? 0));
+export const formatMoney = (value: string | number | null | undefined) => money.format(Number(value ?? 0)).replace(/\.00$/, "");
 export const formatPercent = (value: number | null | undefined) => percents.format(value ?? 0);
 export const toEnglishDigits = digits;
 export const shortId = (value: string) => digits(value.slice(0, 8));

@@ -1,5 +1,9 @@
 # Project Analysis
 
+## Stage 10 performance verification — 2026-09-10
+
+Stage 10 is **PARTIAL PASS**, not production capacity certification. Batched customer aggregates, batched invoice/journal child loading and three measured lookup indexes improve the isolated 100-user run (p95 641ms before; 157ms and 328ms in two final runs). Both 250-user runs failed the error gate; higher levels were not attempted. Fresh-database migration/bootstrap now succeeds without the previous workaround. Final regression: 130 backend + 11 ML tests, 35 frontend tests; quality, migration, PostgreSQL concurrency and recovery checks passed. See [the full report](STAGE_10_PERFORMANCE_REPORT.md) for evidence, limitations and exact Stage 10 files. Prior pending changes are preserved; no commit/push was performed.
+
 ## Audit date and baseline
 
 The repository was inspected on 2026-08-17 before implementation began. It was

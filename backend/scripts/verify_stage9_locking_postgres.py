@@ -243,23 +243,23 @@ def main() -> None:
             last_name="Nine",
             roles=[admin_role],
         )
-        assets = AccountCategory(name=f"Assets {suffix}", account_type="ASSET")
-        expenses = AccountCategory(name=f"Expenses {suffix}", account_type="EXPENSE")
-        revenues = AccountCategory(name=f"Revenue {suffix}", account_type="REVENUE")
+        session.add(actor)
+        session.flush()
+        assets = AccountCategory(owner_id=actor.id, name=f"Assets {suffix}", account_type="ASSET")
+        expenses = AccountCategory(
+            owner_id=actor.id, name=f"Expenses {suffix}", account_type="EXPENSE"
+        )
+        revenues = AccountCategory(
+            owner_id=actor.id, name=f"Revenue {suffix}", account_type="REVENUE"
+        )
         session.add_all([actor, assets, expenses, revenues])
         session.flush()
-        counterpart = Account(
-            code=f"REV-{suffix}", name="Counterpart", category=revenues
-        )
-        period_account = Account(
-            code=f"PER-{suffix}", name="Period race debit", category=assets
-        )
+        counterpart = Account(code=f"REV-{suffix}", name="Counterpart", category=revenues)
+        period_account = Account(code=f"PER-{suffix}", name="Period race debit", category=assets)
         category_account = Account(
             code=f"CAT-{suffix}", name="Category race debit", category=assets
         )
-        role_account = Account(
-            code=f"ROLE-{suffix}", name="Role race debit", category=assets
-        )
+        role_account = Account(code=f"ROLE-{suffix}", name="Role race debit", category=assets)
         closing_period = FinancialPeriod(
             name=f"Closing race {suffix}",
             start_date=date(2026, 1, 1),
@@ -270,6 +270,15 @@ def main() -> None:
             start_date=date(2026, 7, 1),
             end_date=date(2026, 12, 31),
         )
+        for item in (
+            counterpart,
+            period_account,
+            category_account,
+            role_account,
+            closing_period,
+            posting_period,
+        ):
+            item.owner_id = actor.id
         session.add_all(
             [
                 counterpart,

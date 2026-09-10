@@ -1,4 +1,6 @@
 .env
+.env.*
+!.env.example
 .venv/
 __pycache__/
 *.py[cod]
@@ -18,3 +20,11 @@ ml/models/**
 !ml/models/.gitkeep
 ml/generated/
 backups/
+
+# Local runtime output and tools; keep source, reports, and benchmark evidence visible.
+*.log
+/cloudflared.exe.exe
+*.db
+*.sqlite
+*.sqlite3
+# LOAD_*.json / STAGE10_*.json / STAGE11_*.json remain visible pending evidence review.

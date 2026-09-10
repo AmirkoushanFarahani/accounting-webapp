@@ -1,9 +1,12 @@
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 
+import anyio
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 from starlette.responses import Response
 
 from backend.app.api.router import api_router
@@ -23,6 +26,12 @@ from backend.app.services.accounting import AccountingError, ConflictError, NotF
 @asynccontextmanager
 async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     settings: Settings = application.state.settings
+    capacity = min(
+        settings.DB_MAX_CONCURRENT_SESSIONS, settings.DB_POOL_SIZE + settings.DB_MAX_OVERFLOW
+    )
+    if capacity >= anyio.to_thread.current_default_thread_limiter().total_tokens:
+        raise RuntimeError("Database admission must leave worker capacity for request completion")
+    application.state.db_limiter = anyio.CapacityLimiter(capacity)
     settings.ML_MODEL_DIR.mkdir(parents=True, exist_ok=True)
     application.state.auth_rate_limiter.clear()
     yield
@@ -53,6 +62,15 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
         allow_headers=["Authorization", "Content-Type"],
     )
     application.include_router(api_router, prefix=settings.API_V1_PREFIX)
+
+    @application.exception_handler(PoolTimeoutError)
+    @application.exception_handler(OperationalError)
+    async def database_unavailable(_: Request, __: Exception) -> JSONResponse:
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "Database temporarily unavailable"},
+            headers={"Retry-After": "1"},
+        )
 
     @application.middleware("http")
     async def security_headers(

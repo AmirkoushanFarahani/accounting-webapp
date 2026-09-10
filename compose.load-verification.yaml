@@ -1,0 +1,45 @@
+# Separate synthetic smoke stack. Never mounts the normal application's volume or .env.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: azari_load_test
+      POSTGRES_USER: loadtest
+      POSTGRES_PASSWORD: ${VERIFY_DB_PASSWORD:?Set a disposable verification password}
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "loadtest", "-d", "azari_load_test"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+  backend:
+    image: azari-load-fixed-final:latest
+    environment:
+      DATABASE_URL: postgresql+psycopg://loadtest:${VERIFY_DB_PASSWORD}@db:5432/azari_load_test
+      JWT_SECRET: ${VERIFY_JWT_SECRET:?Set a disposable verification secret}
+      ML_MODEL_DIR: /tmp/verification-models
+    # Empty test DB needs roles before the existing 0011 migration; not a production fix.
+    command: ["sh", "-c", "alembic -c /app/backend/alembic.ini upgrade 20260901_0010 && python -m backend.app.db.bootstrap && alembic -c /app/backend/alembic.ini upgrade head && uvicorn backend.app.main:app --host 0.0.0.0 --port 8000"]
+    ports: ["127.0.0.1:18101:8000"]
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/ready', timeout=2)"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  frontend:
+    image: azari-load-frontend-clean:latest
+    build:
+      context: frontend
+      args:
+        VITE_API_URL: http://localhost:18101/api/v1
+    ports: ["127.0.0.1:14174:80"]
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--spider", "http://127.0.0.1/"]
+      interval: 2s
+      timeout: 2s
+      retries: 20

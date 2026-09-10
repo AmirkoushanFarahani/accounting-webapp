@@ -83,6 +83,10 @@ def _migrate_admin_holders(
 ) -> int:
     admin_id = _role_id(connection, "ADMIN")
     if admin_id is None:
+        # On an empty installation migrations run before role bootstrap. There are
+        # no holders to reclassify. Still fail closed for an inconsistent populated DB.
+        if connection.execute(sa.text("SELECT COUNT(*) FROM users")).scalar_one() == 0:
+            return 0
         raise RuntimeError("The ADMIN role must exist before adding OWNER")
     admins = _admin_holders(connection, admin_id)
     if not admins:

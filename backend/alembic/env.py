@@ -10,7 +10,9 @@ from alembic import context
 config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
-config.set_main_option("sqlalchemy.url", get_settings().DATABASE_URL)
+# ConfigParser interpolates percent signs; escape only at this boundary. Reading
+# the option restores the original URL for both online and offline SQLAlchemy use.
+config.set_main_option("sqlalchemy.url", get_settings().DATABASE_URL.replace("%", "%%"))
 target_metadata = Base.metadata
 
 

@@ -1,12 +1,21 @@
 import re
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
+BusinessCategory = Literal["RETAIL", "EDUCATION", "ONLINE", "SERVICES"]
+
+
+class BusinessProfileUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    business_category: BusinessCategory
+
 
 class RegisterRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    business_category: BusinessCategory = "RETAIL"
 
     email: EmailStr | None = None
     phone_number: str | None = None
@@ -64,6 +73,7 @@ class UserRead(BaseModel):
     last_name: str
     is_active: bool
     plan_status: str
+    business_category: BusinessCategory
     created_at: datetime
     updated_at: datetime
     last_login_at: datetime | None

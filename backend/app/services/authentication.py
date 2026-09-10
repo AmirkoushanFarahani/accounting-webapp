@@ -9,7 +9,7 @@ from backend.app.db.models import User
 from backend.app.repositories.audit import AuditRepository
 from backend.app.repositories.roles import RoleRepository
 from backend.app.repositories.users import UserRepository
-from backend.app.schemas.auth import LoginRequest, RegisterRequest
+from backend.app.schemas.auth import BusinessProfileUpdate, LoginRequest, RegisterRequest
 
 PUBLIC_REGISTRATION_ROLE = "OWNER"
 
@@ -60,6 +60,7 @@ class AuthenticationService:
         user = User(
             email=email,
             phone_number=data.phone_number,
+            business_category=data.business_category,
             password_hash=hash_password(data.password),
             first_name=data.first_name.strip(),
             last_name=data.last_name.strip(),
@@ -81,6 +82,20 @@ class AuthenticationService:
             raise DuplicateEmailError(
                 "An account with this email or phone number already exists"
             ) from exc
+        return user
+
+    def update_business_profile(self, user: User, data: BusinessProfileUpdate) -> User:
+        previous = user.business_category
+        user.business_category = data.business_category
+        self.audit.record(
+            action="identity.business_profile.updated",
+            resource_type="user",
+            resource_id=str(user.id),
+            actor_id=user.id,
+            success=True,
+            details={"previous_category": previous, "business_category": data.business_category},
+        )
+        self.session.commit()
         return user
 
     def login(self, data: LoginRequest) -> tuple[User, str]:

@@ -5,6 +5,8 @@ import { useAsync } from "../hooks/useAsync";
 import { api, ApiError } from "../services/api";
 import { usePreferences } from "../theme/ThemeContext";
 import type { User } from "../types/api";
+import { businessProfiles, useBusiness, type BusinessCategory } from "../business/BusinessContext";
+
 const roleLabels: Record<string, string> = { ADMIN: "مدیر سامانه", OWNER: "مالک فضای کاری", ACCOUNTANT: "حسابدار", MANAGER: "مدیر", VIEWER: "مشاهده‌گر" };
 const canonicalRoles = ["ADMIN", "OWNER", "ACCOUNTANT", "MANAGER", "VIEWER"];
 type PendingChange = { kind: "roles"; user: User; roles: string[] } | { kind: "status"; user: User; isActive: boolean };
@@ -39,5 +41,19 @@ export function UsersPage() {
     <Confirm open={Boolean(pending)} title={pending?.kind === "roles" ? "تأیید تغییر نقش‌ها" : pending?.isActive ? "تأیید فعال‌سازی کاربر" : "تأیید غیرفعال‌سازی کاربر"} message={pending?.kind === "roles" ? `نقش‌های ${pending.user.first_name} ${pending.user.last_name} جایگزین شود؟ تغییر نقش مدیر ممکن است دسترسی مدیریتی او را حذف کند.` : `${pending?.user.first_name ?? ""} ${pending?.user.last_name ?? ""} ${pending?.isActive ? "فعال" : "غیرفعال"} شود؟`} confirmLabel="تأیید تغییر" onConfirm={() => void applyChange()} onClose={() => !busy && setPending(null)} busy={busy}/>
   </>;
 }
-export function SettingsPage() { const { theme, calendar, toggleTheme, setCalendar } = usePreferences(); return <><PageHeader title="تنظیمات نمایش" description="انتخاب ظاهر و تقویم دلخواه شما"/><div className="settings-grid"><Card title="رنگ‌بندی"><p>حالت روشن به‌طور پیش‌فرض فعال است. انتخاب شما در همین مرورگر ذخیره می‌شود.</p><div className="choice-row"><button className={`theme-choice ${theme === "light" ? "selected" : ""}`} onClick={() => theme === "dark" && toggleTheme()}><span className="theme-preview light"/>روشن</button><button className={`theme-choice ${theme === "dark" ? "selected" : ""}`} onClick={() => theme === "light" && toggleTheme()}><span className="theme-preview dark"/>تاریک</button></div></Card><Card title="تقویم"><p>ورودی و نمایش تاریخ می‌تواند شمسی یا میلادی باشد. داده‌ها همیشه با تاریخ میلادی استاندارد به سرور ارسال می‌شوند.</p><div className="choice-row"><button className={`calendar-choice ${calendar === "jalali" ? "selected" : ""}`} onClick={() => setCalendar("jalali")}><strong dir="ltr">1405/06/03</strong><span>تقویم شمسی</span></button><button className={`calendar-choice ${calendar === "gregorian" ? "selected" : ""}`} onClick={() => setCalendar("gregorian")}><strong dir="ltr">2026-08-25</strong><span>تقویم میلادی</span></button></div></Card></div></>;
+function BusinessSettings() {
+  const { updateBusiness } = useAuth();
+  const { category } = useBusiness();
+  const [selected, setSelected] = useState<BusinessCategory>(category);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const save = async () => {
+    setBusy(true); setMessage("");
+    try { await updateBusiness(selected); setMessage("نوع کسب‌وکار ذخیره شد؛ اطلاعات مالی شما بدون تغییر باقی ماند."); }
+    catch { setMessage("ذخیره انجام نشد. دوباره تلاش کنید."); }
+    finally { setBusy(false); }
+  };
+  return <Card title="نوع کسب‌وکار"><p>منوها و فرم‌ها را متناسب با فعالیت خود انتخاب کنید. این انتخاب در حساب شما ذخیره می‌شود و طرح اشتراک یا مجوزهای دسترسی را تغییر نمی‌دهد.</p><div className="business-options">{Object.entries(businessProfiles).map(([key, p]) => <label key={key} className={selected === key ? "business-option selected" : "business-option"}><input type="radio" name="business_category" value={key} checked={selected === key} onChange={() => setSelected(key as BusinessCategory)} disabled={busy}/><span><strong>{p.name}</strong><small>{p.examples}</small></span></label>)}</div>{businessProfiles[selected].limitation && <p className="form-note">{businessProfiles[selected].limitation}</p>}<button className="button button--primary" disabled={busy || selected === category} onClick={() => void save()}>{busy ? "در حال ذخیره…" : "ذخیره نوع کسب‌وکار"}</button>{message && <p role="status">{message}</p>}</Card>;
+}
+export function SettingsPage() { const { theme, calendar, toggleTheme, setCalendar } = usePreferences(); return <><PageHeader title="تنظیمات نمایش" description="انتخاب ظاهر و تقویم دلخواه شما"/><BusinessSettings/><div className="settings-grid"><Card title="رنگ‌بندی"><p>حالت روشن به‌طور پیش‌فرض فعال است. انتخاب شما در همین مرورگر ذخیره می‌شود.</p><div className="choice-row"><button className={`theme-choice ${theme === "light" ? "selected" : ""}`} onClick={() => theme === "dark" && toggleTheme()}><span className="theme-preview light"/>روشن</button><button className={`theme-choice ${theme === "dark" ? "selected" : ""}`} onClick={() => theme === "light" && toggleTheme()}><span className="theme-preview dark"/>تاریک</button></div></Card><Card title="تقویم"><p>ورودی و نمایش تاریخ می‌تواند شمسی یا میلادی باشد. داده‌ها همیشه با تاریخ میلادی استاندارد به سرور ارسال می‌شوند.</p><div className="choice-row"><button className={`calendar-choice ${calendar === "jalali" ? "selected" : ""}`} onClick={() => setCalendar("jalali")}><strong dir="ltr">1405/06/03</strong><span>تقویم شمسی</span></button><button className={`calendar-choice ${calendar === "gregorian" ? "selected" : ""}`} onClick={() => setCalendar("gregorian")}><strong dir="ltr">2026-08-25</strong><span>تقویم میلادی</span></button></div></Card></div></>;
 }

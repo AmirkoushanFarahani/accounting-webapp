@@ -38,9 +38,7 @@ def post_payment(payment_id: UUID, actor_id: UUID, barrier: Barrier) -> str:
     with SessionLocal() as session:
         actor = session.get_one(User, actor_id)
         payment = session.get_one(Payment, payment_id)
-        cash_id = session.scalar(
-            select(Account.id).where(Account.posting_role == "CASH")
-        )
+        cash_id = session.scalar(select(Account.id).where(Account.posting_role == "CASH"))
         receivable_id = session.scalar(
             select(Account.id).where(Account.posting_role == "RECEIVABLE")
         )
@@ -78,14 +76,18 @@ def main() -> None:
             last_name="B",
             roles=[admin_role],
         )
-        assets = AccountCategory(name=f"Assets {suffix}", account_type="ASSET")
-        revenues = AccountCategory(name=f"Revenue {suffix}", account_type="REVENUE")
-        liabilities = AccountCategory(name=f"Liabilities {suffix}", account_type="LIABILITY")
+        session.add(actor)
+        session.flush()
+        assets = AccountCategory(owner_id=actor.id, name=f"Assets {suffix}", account_type="ASSET")
+        revenues = AccountCategory(
+            owner_id=actor.id, name=f"Revenue {suffix}", account_type="REVENUE"
+        )
+        liabilities = AccountCategory(
+            owner_id=actor.id, name=f"Liabilities {suffix}", account_type="LIABILITY"
+        )
         session.add_all([actor, assets, revenues, liabilities])
         session.flush()
-        cash = Account(
-            code=f"C-{suffix}", name="Cash", category=assets, posting_role="CASH"
-        )
+        cash = Account(code=f"C-{suffix}", name="Cash", category=assets, posting_role="CASH")
         receivable = Account(
             code=f"AR-{suffix}",
             name="Receivable",
@@ -110,12 +112,10 @@ def main() -> None:
             end_date=date(2026, 12, 31),
         )
         party = Party(name=f"Customer {suffix}", is_customer=True)
-        product = Product(
-            sku=f"PB-{suffix}", name="Service", unit_price=Decimal("100.00")
-        )
-        session.add_all(
-            [cash, receivable, revenue, tax_liability, period, party, product]
-        )
+        product = Product(sku=f"PB-{suffix}", name="Service", unit_price=Decimal("100.00"))
+        for item in (cash, receivable, revenue, tax_liability, period, party, product):
+            item.owner_id = actor.id
+        session.add_all([cash, receivable, revenue, tax_liability, period, party, product])
         session.commit()
 
         service = AccountingService(session, actor)
@@ -157,9 +157,7 @@ def main() -> None:
                     amount=Decimal("110.00"),
                     reference=f"PB-{suffix}-{number}",
                     method="bank",
-                    allocations=[
-                        AllocationCreate(invoice_id=invoice.id, amount=Decimal("110.00"))
-                    ],
+                    allocations=[AllocationCreate(invoice_id=invoice.id, amount=Decimal("110.00"))],
                 )
             )
             payment_ids.append(payment.id)
@@ -179,9 +177,7 @@ def main() -> None:
     with SessionLocal() as session:
         invoice = session.get_one(Invoice, invoice_id)
         posted_payments = session.scalars(
-            select(Payment).where(
-                Payment.id.in_(payment_ids), Payment.status == "POSTED"
-            )
+            select(Payment).where(Payment.id.in_(payment_ids), Payment.status == "POSTED")
         ).all()
         payment_journals = session.scalars(
             select(JournalEntry).where(JournalEntry.entry_number.like(f"PAY-PB-{suffix}-%"))

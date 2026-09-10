@@ -1,0 +1,12 @@
+# Apply over compose.load-verification.yaml; isolated synthetic database only.
+services:
+  backend:
+    image: azari-stage10-final:latest
+    command: ["sh", "-c", "alembic -c /app/backend/alembic.ini upgrade head && python -m backend.app.db.bootstrap && uvicorn backend.app.main:app --host 0.0.0.0 --port 8000"]
+    ports: !override ["127.0.0.1:18104:8000"]
+  frontend:
+    image: azari-stage10-frontend:latest
+    build:
+      args:
+        VITE_API_URL: http://localhost:18104/api/v1
+    ports: !override ["127.0.0.1:14175:80"]

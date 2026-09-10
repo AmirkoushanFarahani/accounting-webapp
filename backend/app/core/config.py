@@ -22,6 +22,12 @@ class Settings(BaseSettings):
     JWT_SECRET: SecretStr
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(default=30, ge=5, le=1440)
+    DB_POOL_SIZE: int = Field(default=5, ge=1, le=30)
+    DB_MAX_OVERFLOW: int = Field(default=10, ge=0, le=30)
+    DB_POOL_TIMEOUT_SECONDS: float = Field(default=2, gt=0, le=30)
+    DB_CONNECT_TIMEOUT_SECONDS: int = Field(default=5, ge=1, le=30)
+    DB_MAX_CONCURRENT_SESSIONS: int = Field(default=15, ge=1, le=32)
+    DB_ADMISSION_TIMEOUT_SECONDS: float = Field(default=1, gt=0, le=10)
     AUTH_RATE_LIMIT_ATTEMPTS: int = Field(default=5, ge=1, le=100)
     AUTH_RATE_LIMIT_WINDOW_SECONDS: int = Field(default=60, ge=1, le=3600)
     CORS_ORIGINS: list[str] = Field(default_factory=lambda: ["http://localhost:4173"])

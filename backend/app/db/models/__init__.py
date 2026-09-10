@@ -17,10 +17,12 @@ from backend.app.db.models.accounting import (
     Product,
 )
 from backend.app.db.models.audit import AuditEvent
+from backend.app.db.models.expense import Expense
 from backend.app.db.models.identity import Permission, Role, User, role_permissions, user_roles
 from backend.app.db.models.ml import MLModelVersion, MLPrediction, MLPredictionFeedback
 
 __all__ = [
+    "Expense",
     "AuditEvent",
     "Account",
     "AccountCategory",

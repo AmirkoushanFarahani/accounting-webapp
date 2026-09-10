@@ -6,7 +6,13 @@ from sqlalchemy.orm import Session
 from backend.app.api.dependencies import require_authenticated_user
 from backend.app.db.database import get_db
 from backend.app.db.models import User
-from backend.app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse, UserRead
+from backend.app.schemas.auth import (
+    BusinessProfileUpdate,
+    LoginRequest,
+    RegisterRequest,
+    TokenResponse,
+    UserRead,
+)
 from backend.app.services.authentication import (
     AuthenticationError,
     AuthenticationService,
@@ -61,3 +67,12 @@ def login(
 @router.get("/me", response_model=UserRead)
 def me(current_user: Annotated[User, Depends(require_authenticated_user)]) -> User:
     return current_user
+
+
+@router.patch("/me/business-profile", response_model=UserRead)
+def update_business_profile(
+    data: BusinessProfileUpdate,
+    current_user: Annotated[User, Depends(require_authenticated_user)],
+    session: Annotated[Session, Depends(get_db)],
+) -> User:
+    return AuthenticationService(session).update_business_profile(current_user, data)

@@ -30,3 +30,23 @@ ml/models/**
 
 # The frontend is built from its own context and is not needed by the backend.
 frontend/
+
+# Local data and generated verification output are never backend build inputs.
+backups/
+cloudflared.exe.exe
+LOAD_*.json
+STAGE10_*.json
+STAGE11_*.json
+.test-models/
+*.log
+**/*.log
+*.db
+*.sqlite
+*.sqlite3
+**/*.db
+**/*.sqlite
+**/*.sqlite3
+# Protect nested local environment files as well as the root environment.
+**/.env
+**/.env.*
+!**/.env.example

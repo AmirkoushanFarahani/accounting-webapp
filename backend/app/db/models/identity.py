@@ -50,6 +50,10 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             name="contact_method_required",
         ),
         CheckConstraint("plan_status IN ('FREE','PRO')", name="valid_plan_status"),
+        CheckConstraint(
+            "business_category IN ('RETAIL','EDUCATION','ONLINE','SERVICES')",
+            name="valid_business_category",
+        ),
         Index(
             "uq_users_phone_number_not_null",
             "phone_number",
@@ -69,6 +73,9 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     plan_status: Mapped[str] = mapped_column(
         String(20), default="FREE", server_default="FREE", nullable=False
+    )
+    business_category: Mapped[str] = mapped_column(
+        String(20), default="RETAIL", server_default="RETAIL", nullable=False
     )
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 

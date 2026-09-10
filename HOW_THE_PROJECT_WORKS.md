@@ -1,5 +1,7 @@
 # Azari Intelligent Accounting — How the Project Works
 
+> Stage 10 technical update (2026-09-10): customer-summary queries now aggregate by customer in batches, and invoice/journal lists batch child records. Accounting calculations, ownership, posting locks and Persian UI behavior are unchanged. Three lookup indexes and an empty-database migration fix were verified on isolated PostgreSQL. Local capacity remains verified only at 100 simulated users in short tests; 250 failed. See [Stage 10 report](STAGE_10_PERFORMANCE_REPORT.md), not earlier test counts, for this verification run.
+
 > **Document type:** implementation handbook, not a product wish list<br>
 > **Source of truth used:** repository source on `main`, inspected 2026-08-27<br>
 > **Scope:** current behavior after Stages 1–8 and the later self-registration addition

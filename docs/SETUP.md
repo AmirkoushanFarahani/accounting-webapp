@@ -1,5 +1,11 @@
 # Setup
 
+## Stage 10 clean-start verification
+
+Normal startup remains `alembic upgrade head`, bootstrap, then Uvicorn. Migration 0011 now safely skips legacy ADMIN-holder conversion only when no users exist; it still fails closed if users exist without ADMIN. Do not use the older load-verification startup workaround for deployment. Migration 0014 adds three lookup indexes; plan a maintenance window for large existing tables because creation uses transactional, non-concurrent DDL.
+
+An isolated smoke test uses `compose.load-verification.yaml` plus `compose.stage10-verification.yaml` with project name `azari-stage10-smoke`, disposable VERIFY_DB_PASSWORD/VERIFY_JWT_SECRET environment values, and the locally built `azari-stage10-final:latest` backend image. It exposes frontend14175/backend18104, not normal application ports, and uses its own database. Never run load/outage scripts against the real application database. Stage 10 verified fresh startup, clean drift and recovery, but **did not verify 250+ user capacity**. See [full results](../STAGE_10_PERFORMANCE_REPORT.md).
+
 ## Docker development
 
 Install Docker Desktop (or Docker Engine with Compose), copy `.env.example` to

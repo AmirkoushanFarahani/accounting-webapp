@@ -3,7 +3,7 @@ from decimal import Decimal
 from uuid import UUID
 
 from sqlalchemy import case, func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from backend.app.db.models import (
     Account,
@@ -11,6 +11,7 @@ from backend.app.db.models import (
     Bill,
     BillPayment,
     BillPaymentAllocation,
+    Expense,
     Invoice,
     JournalEntry,
     JournalLine,
@@ -21,6 +22,14 @@ from backend.app.db.models import (
 
 
 class ReportingRepository:
+    def paid_expenses(self, start_date: date | None, end_date: date | None) -> list[Expense]:
+        query = select(Expense).where(Expense.owner_id == self.owner_id)
+        if start_date:
+            query = query.where(Expense.payment_date >= start_date)
+        if end_date:
+            query = query.where(Expense.payment_date <= end_date)
+        return list(self.session.scalars(query))
+
     def __init__(self, session: Session, owner_id: UUID) -> None:
         self.session = session
         self.owner_id = owner_id
@@ -98,8 +107,7 @@ class ReportingRepository:
             func.sum(
                 case(
                     (
-                        (BillPayment.status == "POSTED")
-                        & (BillPayment.payment_date <= as_of),
+                        (BillPayment.status == "POSTED") & (BillPayment.payment_date <= as_of),
                         BillPaymentAllocation.amount,
                     ),
                     else_=0,
@@ -155,7 +163,9 @@ class ReportingRepository:
     def party_invoices(
         self, party_id: UUID, start_date: date | None, end_date: date | None
     ) -> list[Invoice]:
-        statement = select(Invoice).where(
+        statement = select(Invoice).options(
+            selectinload(Invoice.items), selectinload(Invoice.checks)
+        ).where(
             Invoice.owner_id == self.owner_id,
             Invoice.customer_id == party_id,
         )
@@ -164,6 +174,49 @@ class ReportingRepository:
         if end_date is not None:
             statement = statement.where(Invoice.issue_date <= end_date)
         return list(self.session.scalars(statement))
+
+    def customer_totals(self) -> dict[UUID, tuple[int, Decimal, Decimal, Decimal, Decimal]]:
+        """Aggregate each source independently so joins cannot multiply financial totals."""
+        invoices = {
+            row[0]: (int(row[1]), Decimal(row[2]), Decimal(row[3]))
+            for row in self.session.execute(
+                select(
+                    Invoice.customer_id, func.count(Invoice.id), func.sum(Invoice.total),
+                    func.sum(Invoice.total - Invoice.amount_paid),
+                ).where(
+                    Invoice.owner_id == self.owner_id,
+                    Invoice.status.in_(("ISSUED", "PARTIALLY_PAID", "PAID")),
+                ).group_by(Invoice.customer_id)
+            )
+        }
+        payments = {
+            row[0]: Decimal(row[1])
+            for row in self.session.execute(
+                select(Payment.party_id, func.sum(Payment.amount)).where(
+                    Payment.owner_id == self.owner_id, Payment.status == "POSTED",
+                ).group_by(Payment.party_id)
+            )
+        }
+        credits = {
+            row[0]: Decimal(row[1])
+            for row in self.session.execute(
+                select(Payment.party_id, func.sum(JournalLine.credit - JournalLine.debit))
+                .join(JournalEntry, JournalEntry.id == Payment.journal_id)
+                .join(JournalLine, JournalLine.journal_id == JournalEntry.id)
+                .join(Account, Account.id == JournalLine.account_id)
+                .where(
+                    Payment.owner_id == self.owner_id, JournalEntry.owner_id == self.owner_id,
+                    Account.owner_id == self.owner_id, Payment.status == "POSTED",
+                    JournalEntry.status == "POSTED", Account.posting_role == "CUSTOMER_CREDIT",
+                ).group_by(Payment.party_id)
+            )
+        }
+        zero = Decimal(0)
+        return {
+            party_id: (*invoices.get(party_id, (0, zero, zero)),
+                       payments.get(party_id, zero), credits.get(party_id, zero))
+            for party_id in invoices.keys() | payments.keys() | credits.keys()
+        }
 
     def party_payments(
         self, party_id: UUID, start_date: date | None, end_date: date | None

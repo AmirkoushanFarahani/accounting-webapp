@@ -105,6 +105,27 @@ def _roles_by_email(connection: Connection) -> dict[str, list[str]]:
     return result
 
 
+def test_empty_install_does_not_require_bootstrapped_admin(migration_connection):
+    connection = migration_connection
+    connection.execute(sa.text("DELETE FROM user_roles"))
+    connection.execute(sa.text("DELETE FROM users"))
+    connection.execute(sa.text("DELETE FROM role_permissions"))
+    connection.execute(sa.text("DELETE FROM roles"))
+    owner_id = migration._ensure_owner_role(connection)
+    assert migration._migrate_admin_holders(connection, owner_id, None) == 0
+    assert connection.execute(sa.text("SELECT COUNT(*) FROM users")).scalar_one() == 0
+
+
+def test_missing_admin_with_existing_users_still_fails_closed(migration_connection):
+    connection = migration_connection
+    connection.execute(sa.text("DELETE FROM user_roles"))
+    connection.execute(sa.text("DELETE FROM role_permissions"))
+    connection.execute(sa.text("DELETE FROM roles"))
+    owner_id = migration._ensure_owner_role(connection)
+    with pytest.raises(RuntimeError, match="ADMIN role must exist"):
+        migration._migrate_admin_holders(connection, owner_id, None)
+
+
 def test_migration_keeps_bootstrap_admin_and_downgrades_other_admins(
     migration_connection: Connection,
 ) -> None:

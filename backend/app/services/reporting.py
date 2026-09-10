@@ -214,6 +214,8 @@ class ReportingService:
             inflows[receipt.payment_date] += receipt.amount
         for disbursement in self.repo.posted_bill_payments(start_date, end_date):
             outflows[disbursement.payment_date] += disbursement.amount
+        for expense in self.repo.paid_expenses(start_date, end_date):
+            outflows[expense.payment_date] += expense.amount
         points = [
             CashFlowPoint(
                 date=value,
@@ -271,7 +273,21 @@ class ReportingService:
         )
 
     def customers(self) -> list[CustomerSummary]:
-        return [self._customer_summary(party) for party in self.repo.customers()]
+        totals = self.repo.customer_totals()
+        result = []
+        for party in self.repo.customers():
+            count, purchased, receivable, received, credit = totals.get(
+                party.id, (0, ZERO, ZERO, ZERO, ZERO)
+            )
+            net = money(receivable - credit)
+            result.append(CustomerSummary(
+                party_id=party.id, name=party.name, email=party.email, phone=party.phone,
+                address=party.address, is_active=party.is_active, purchase_count=count,
+                total_purchased=money(purchased), total_received=money(received),
+                receivable_balance=money(receivable), customer_credit_balance=money(credit),
+                net_balance=net, balance_direction=self._balance_direction(net),
+            ))
+        return result
 
     def party_history(
         self,

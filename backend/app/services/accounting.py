@@ -5,7 +5,7 @@ from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from backend.app.db.base import Base
 from backend.app.db.models import (
@@ -15,6 +15,7 @@ from backend.app.db.models import (
     BillItem,
     BillPayment,
     BillPaymentAllocation,
+    Expense,
     FinancialPeriod,
     Invoice,
     InvoiceCheck,
@@ -50,6 +51,7 @@ from backend.app.schemas.accounting import (
     ProductCreate,
     ProductUpdate,
 )
+from backend.app.schemas.expense import ExpenseCreate
 
 CENT = Decimal("0.01")
 ModelT = TypeVar("ModelT", bound=Base)
@@ -72,6 +74,53 @@ def money(value: Decimal) -> Decimal:
 
 
 class AccountingService:
+    def create_expense(self, data: ExpenseCreate) -> Expense:
+        """Immediately paid expense, including checks by explicit owner decision."""
+        from uuid import uuid4
+
+        try:
+            period = self.session.scalar(
+                select(FinancialPeriod).where(
+                    FinancialPeriod.owner_id == self.actor.id,
+                    FinancialPeriod.start_date <= data.payment_date,
+                    FinancialPeriod.end_date >= data.payment_date,
+                )
+            )
+            if period is None:
+                raise AccountingError("No financial period covers the payment date")
+            self._get_for_update(FinancialPeriod, period.id)
+            for account_id in sorted({data.expense_account_id, data.cash_account_id}, key=str):
+                self._get_for_update(Account, account_id)
+            self._posting_account(data.expense_account_id, "EXPENSE", "EXPENSE", "Expense")
+            self._posting_account(data.cash_account_id, "ASSET", "CASH", "Cash")
+            journal = self.create_journal(
+                JournalCreate(
+                    entry_number=f"EXP-{uuid4()}",
+                    entry_date=data.payment_date,
+                    period_id=period.id,
+                    description=data.name,
+                    lines=[
+                        JournalLineCreate(account_id=data.expense_account_id, debit=data.amount),
+                        JournalLineCreate(account_id=data.cash_account_id, credit=data.amount),
+                    ],
+                ),
+                commit=False,
+            )
+            self._post_journal(journal)
+            expense = Expense(
+                owner_id=self.actor.id,
+                journal_id=journal.id,
+                **data.model_dump(exclude={"expense_account_id", "cash_account_id"}),
+            )
+            self.session.add(expense)
+            self._flush()
+            self._audit("accounting.expense.created", expense)
+            self._commit()
+            return expense
+        except Exception:
+            self.session.rollback()
+            raise
+
     def __init__(self, session: Session, actor: User) -> None:
         self.session = session
         self.actor = actor
@@ -385,9 +434,18 @@ class AccountingService:
         bill_payment_source = self.session.scalar(
             select(BillPayment.id).where(BillPayment.journal_id == original.id)
         )
+        expense_source = self.session.scalar(
+            select(Expense.id).where(Expense.journal_id == original.id)
+        )
         if any(
             source is not None
-            for source in (invoice_source, payment_source, bill_source, bill_payment_source)
+            for source in (
+                invoice_source,
+                payment_source,
+                bill_source,
+                bill_payment_source,
+                expense_source,
+            )
         ):
             raise ConflictError("Source-document journals cannot be reversed directly")
         reversal = JournalEntry(
@@ -1040,11 +1098,13 @@ class AccountingService:
         | type[Payment]
         | type[Product],
     ) -> list[object]:
-        return list(
-            self.session.scalars(
-                select(model).where(model.owner_id == self.actor.id)
-            )
-        )
+        statement = select(model).where(model.owner_id == self.actor.id)
+        # Read/list only; posting queries keep their existing row-locking behavior.
+        if model is Invoice:
+            statement = statement.options(selectinload(Invoice.items), selectinload(Invoice.checks))
+        elif model is JournalEntry:
+            statement = statement.options(selectinload(JournalEntry.lines))
+        return list(self.session.scalars(statement))
 
     def get(
         self,

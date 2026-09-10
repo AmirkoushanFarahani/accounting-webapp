@@ -1,5 +1,9 @@
 # Architecture
 
+## Stage 10 measured read-path improvements
+
+As of 2026-09-10, AccountingService list queries use select-in loading for invoice items/checks and journal lines. Customer summaries use three independent owner-scoped grouped financial queries plus one customer-list query, avoiding N+1 aggregates and join multiplication. Lookup indexes cover invoice_items.invoice_id and journal_lines.journal_id/account_id. Posting transactions, lock order, authorization, ML semantics and the existing bounded database admission remain unchanged. The test-only profiling ASGI wrapper in scripts/stage10_probe.py must not be exposed by production startup. See [Stage 10 evidence](../STAGE_10_PERFORMANCE_REPORT.md).
+
 The system uses a React client, a versioned FastAPI REST API, PostgreSQL, and
 offline scikit-learn/Prophet training pipelines. HTTP routes remain thin;
 services enforce accounting rules and transactions; repositories isolate ORM
