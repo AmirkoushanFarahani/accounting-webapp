@@ -20,9 +20,25 @@ from backend.app.db.models.audit import AuditEvent
 from backend.app.db.models.expense import Expense
 from backend.app.db.models.identity import Permission, Role, User, role_permissions, user_roles
 from backend.app.db.models.ml import MLModelVersion, MLPrediction, MLPredictionFeedback
+from backend.app.db.models.school import (
+    DiscountCode,
+    EnrollmentCourse,
+    EnrollmentPayment,
+    SchoolCost,
+    SchoolCourse,
+    Student,
+    StudentEnrollment,
+)
 
 __all__ = [
     "Expense",
+    "SchoolCourse",
+    "SchoolCost",
+    "DiscountCode",
+    "Student",
+    "StudentEnrollment",
+    "EnrollmentCourse",
+    "EnrollmentPayment",
     "AuditEvent",
     "Account",
     "AccountCategory",

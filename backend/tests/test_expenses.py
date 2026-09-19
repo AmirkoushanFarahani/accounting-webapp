@@ -24,6 +24,7 @@ def test_paid_expense_posts_once_and_updates_reports(method: str) -> None:
                 amount=Decimal("125.50"),
                 payment_date=date(2026, 2, 1),
                 method=method,
+                check_due_date=date(2026, 3, 1) if method == "CHECK" else None,
                 expense_account_id=values.expense.id,
                 cash_account_id=values.cash.id,
             )

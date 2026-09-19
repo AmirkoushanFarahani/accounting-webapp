@@ -14,7 +14,7 @@ from ml.training.cash_flow import CashFlowModel
 from ml.training.payment_risk import PaymentRiskModel
 from ml.training.segmentation import SEGMENT_FEATURES, SegmentationModel
 from ml.training.transaction import TransactionModel
-from sqlalchemy import update
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -23,6 +23,7 @@ from backend.app.db.models import (
     MLModelVersion,
     MLPrediction,
     MLPredictionFeedback,
+    Student,
     User,
 )
 from backend.app.ml.registry import (
@@ -359,6 +360,58 @@ class MLService:
         }
         prediction = self._persist(
             record=record, actor=actor, value=value, source_type="party", source_id=str(party_id)
+        )
+        return prediction, value
+
+    def segment_student(
+        self, student_id: UUID, as_of: date, actor: User
+    ) -> tuple[MLPrediction, dict[str, Any]]:
+        """Group a school student using their own enrolment and payment history."""
+        workspace_owner_id = actor.school_manager_id or actor.id
+        student = self.session.scalar(
+            select(Student).where(
+                Student.id == student_id,
+                Student.workspace_owner_id == workspace_owner_id,
+            )
+        )
+        if student is None:
+            raise ModelNotFoundError("Student not found")
+        enrolments = list(student.enrollments)
+        if not enrolments:
+            raise PredictionInputError("Student has no enrolment history")
+        total = sum(float(enrolment.total_amount) for enrolment in enrolments)
+        paid = sum(float(enrolment.amount_paid) for enrolment in enrolments)
+        payment_rows = [payment for enrolment in enrolments for payment in enrolment.payments]
+        delays = [
+            float((payment.updated_at.date() - payment.due_date).days)
+            for payment in payment_rows
+            if payment.status == "PAID" and payment.due_date is not None
+        ]
+        months = max((as_of - student.registration_date).days / 30.0, 1.0)
+        raw = {
+            "invoice_count": float(len(enrolments)),
+            "total_invoice_amount": total,
+            "avg_invoice_amount": total / len(enrolments),
+            "total_payment_amount": paid,
+            "avg_delay_days": float(np.mean(delays)) if delays else 0.0,
+            "outstanding_balance": max(total - paid, 0.0),
+            "payment_frequency": len(payment_rows) / months,
+        }
+        features = {name: raw[name] for name in SEGMENT_FEATURES}
+        record, loaded = self._loaded("customer_segmentation")
+        result = cast(SegmentationModel, loaded).predict(features)
+        value = {
+            "segment": result.segment,
+            "behavioral_description": result.description,
+            "model_version": record.model_version,
+            "as_of": as_of.isoformat(),
+        }
+        prediction = self._persist(
+            record=record,
+            actor=actor,
+            value=value,
+            source_type="student",
+            source_id=str(student_id),
         )
         return prediction, value
 

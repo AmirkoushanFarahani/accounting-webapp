@@ -18,6 +18,7 @@ class Expense(UUIDPrimaryKeyMixin, TimestampMixin, OwnedMixin, Base):
     amount: Mapped[Decimal] = mapped_column(Numeric(18, 2))
     payment_date: Mapped[date] = mapped_column(Date, index=True)
     method: Mapped[str] = mapped_column(String(20))
+    check_due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     tracking_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
     journal_id: Mapped[UUID] = mapped_column(
         ForeignKey("journal_entries.id", ondelete="RESTRICT"), unique=True

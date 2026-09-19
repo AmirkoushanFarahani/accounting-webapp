@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import TYPE_CHECKING
+from uuid import UUID
 
 from sqlalchemy import (
     Boolean,
@@ -76,6 +77,11 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     business_category: Mapped[str] = mapped_column(
         String(20), default="RETAIL", server_default="RETAIL", nullable=False
+    )
+    # School employees work in their manager's workspace. Managers and independent
+    # school owners leave this null and therefore use their own id as the workspace.
+    school_manager_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=True, index=True
     )
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 

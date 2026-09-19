@@ -329,6 +329,7 @@ class Payment(UUIDPrimaryKeyMixin, TimestampMixin, OwnedMixin, Base):
     reference: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     method: Mapped[str] = mapped_column(String(50), nullable=False)
     sayad_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    check_due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     customer_credit_account_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("accounts.id", ondelete="RESTRICT"), nullable=True
     )
@@ -372,6 +373,7 @@ class BillPayment(UUIDPrimaryKeyMixin, TimestampMixin, OwnedMixin, Base):
     reference: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     method: Mapped[str] = mapped_column(String(50), nullable=False)
     sayad_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    check_due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     status: Mapped[str] = mapped_column(String(12), default="DRAFT", server_default="DRAFT")
     journal_id: Mapped[UUID | None] = mapped_column(ForeignKey("journal_entries.id"), unique=True)
     party: Mapped[Party] = relationship()

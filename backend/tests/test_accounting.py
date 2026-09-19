@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
+from uuid import uuid4
 
 import pytest
 from backend.app.db.database import SessionLocal, engine
@@ -39,6 +40,7 @@ from backend.app.schemas.accounting import (
     ProductCreate,
     ProductUpdate,
 )
+from backend.app.schemas.expense import ExpenseCreate
 from backend.app.services.accounting import (
     AccountingError,
     AccountingService,
@@ -65,6 +67,40 @@ class Domain:
     customer: Party
     supplier: Party
     product: Product
+
+
+def test_check_payment_schemas_require_a_due_date() -> None:
+    party_id = uuid4()
+    invoice_id = uuid4()
+    with pytest.raises(ValidationError):
+        PaymentCreate(
+            party_id=party_id,
+            payment_date=date(2030, 1, 1),
+            amount=Decimal("100"),
+            reference="CHECK-RECEIPT",
+            method="چک",
+            allocations=[{"invoice_id": invoice_id, "amount": "100"}],
+        )
+    payment = PaymentCreate(
+        party_id=party_id,
+        payment_date=date(2030, 1, 1),
+        amount=Decimal("100"),
+        reference="CHECK-RECEIPT",
+        method="چک",
+        check_due_date=date(2030, 2, 1),
+        allocations=[{"invoice_id": invoice_id, "amount": "100"}],
+    )
+    assert payment.check_due_date == date(2030, 2, 1)
+
+    with pytest.raises(ValidationError):
+        ExpenseCreate(
+            name="Check expense",
+            amount=Decimal("100"),
+            payment_date=date(2030, 1, 1),
+            method="CHECK",
+            expense_account_id=uuid4(),
+            cash_account_id=uuid4(),
+        )
 
 
 def domain(session: Session) -> tuple[AccountingService, Domain]:
@@ -831,6 +867,7 @@ def test_customer_overpayment_posts_receivable_and_credit_liability() -> None:
                 reference="OVERPAYMENT",
                 method="check",
                 sayad_id="OPTIONAL-SAYAD",
+                check_due_date=date(2026, 3, 5),
                 allocations=[{"invoice_id": invoice.id, "amount": invoice.total}],
             )
         )

@@ -7,7 +7,7 @@ import { businessText, useBusiness, type BusinessCategory } from "../business/Bu
 
 interface NavItem { label: string; path: string; permission?: string }
 interface NavGroup { label: string; items: NavItem[] }
-const profileRoleLabels: Record<string, string> = { ADMIN: "مدیر سامانه", OWNER: "مالک فضای کاری", ACCOUNTANT: "حسابدار", MANAGER: "مدیر", VIEWER: "مشاهده‌گر" };
+const profileRoleLabels: Record<string, string> = { ADMIN: "مدیر سامانه", OWNER: "مالک فضای کاری", ACCOUNTANT: "حسابدار", MANAGER: "مدیر", EMPLOYEE: "کارمند", VIEWER: "مشاهده‌گر" };
 export const navigation: Array<NavItem | NavGroup> = [
   { label: "داشبورد", path: "/dashboard", permission: "reports:read" },
   { label: "حسابداری", items: [
@@ -28,6 +28,22 @@ export const navigation: Array<NavItem | NavGroup> = [
   { label: "مدیریت", items: [{ label: "کاربران", path: "/users", permission: "users:read" }, { label: "تنظیمات نمایش", path: "/settings" }] },
 ];
 export function navigationForBusiness(category: BusinessCategory) {
+  if (category === "EDUCATION") return [
+    { label: "داشبورد", path: "/dashboard", permission: "reports:read" },
+    { label: "ثبت‌نام", items: [
+      { label: "دانش‌آموزان", path: "/students", permission: "school:read" },
+      { label: "پرونده مشتریان", path: "/student-records", permission: "school:read" },
+      { label: "دوره‌ها و شهریه‌ها", path: "/courses", permission: "school:read" },
+    ] },
+    { label: "حسابداری", items: [
+      { label: "نمای مالی آموزشگاه", path: "/school-accounting", permission: "school:manage" },
+      { label: "هزینه‌های آموزشگاه", path: "/school-costs", permission: "school:manage" },
+    ] },
+    { label: "مدیریت", items: [
+      { label: "کاربران", path: "/users", permission: "users:read" },
+      { label: "تنظیمات نمایش", path: "/settings" },
+    ] },
+  ];
   const entries = category === "RETAIL" ? navigation : [navigation[0], navigation[2], navigation[1], ...navigation.slice(3)];
   return entries.map((entry) => "path" in entry
     ? { ...entry, label: businessText(category, entry.label) }

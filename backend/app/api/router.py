@@ -1,9 +1,10 @@
 from fastapi import APIRouter
 
-from backend.app.api.routes import accounting, auth, expenses, health, ml, reporting, users
+from backend.app.api.routes import accounting, auth, expenses, health, ml, reporting, school, users
 
 api_router = APIRouter()
 api_router.include_router(expenses.router, tags=["expenses"])
+api_router.include_router(school.router, tags=["school"])
 api_router.include_router(health.router, tags=["system"])
 api_router.include_router(auth.router, tags=["authentication"])
 api_router.include_router(users.router, tags=["users"])

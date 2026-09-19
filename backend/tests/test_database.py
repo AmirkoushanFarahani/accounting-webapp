@@ -63,7 +63,7 @@ def test_rbac_bootstrap_is_idempotent() -> None:
         seed_rbac(session)
         seed_rbac(session)
         roles = {role.name: role for role in session.scalars(select(Role)).all()}
-        assert set(roles) == {"ADMIN", "OWNER", "ACCOUNTANT", "MANAGER", "VIEWER"}
+        assert set(roles) == {"ADMIN", "OWNER", "ACCOUNTANT", "MANAGER", "EMPLOYEE", "VIEWER"}
         assert len(session.scalars(select(Permission)).all()) == len(PERMISSIONS)
         assert {permission.name for permission in roles["OWNER"].permissions} == {
             name for name in PERMISSIONS if not name.startswith("users:")

@@ -333,12 +333,14 @@ def test_supplier_bill_and_payment_api_workflow_and_reversal_protection(
             "reference": "API-BP-1",
             "method": "check",
             "sayad_id": "OPTIONAL-BILL-SAYAD",
+            "check_due_date": "2026-04-15",
             "allocations": [{"bill_id": bill["id"], "amount": "110"}],
         },
     )
     assert created_payment.status_code == 201, created_payment.text
     payment = created_payment.json()
     assert payment["sayad_id"] == "OPTIONAL-BILL-SAYAD"
+    assert payment["check_due_date"] == "2026-04-15"
     assert client.get("/api/v1/bill-payments", headers=headers).status_code == 200
     assert (
         client.get(f"/api/v1/bill-payments/{payment['id']}", headers=headers).status_code == 200

@@ -382,6 +382,7 @@ def test_party_history_exposes_current_customer_credit_balance() -> None:
                 amount=Decimal("50"),
                 reference="R-CREDIT-1",
                 method="check",
+                check_due_date=date(2026, 3, 22),
                 allocations=[{"invoice_id": values.invoice.id, "amount": Decimal("25")}],
             )
         )

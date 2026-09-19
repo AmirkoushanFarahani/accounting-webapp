@@ -2,22 +2,83 @@ import { PartySelect } from "../components/PartySelect";
 import { useBusiness } from "../business/BusinessContext";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useAuth } from "../auth/AuthContext";
-import { Confirm, DateField, DateText, EmptyState, ErrorState, Field, LoadingState, Modal, Money, MoneyInput, PageHeader, StatusBadge } from "../components/ui";
+import {
+  Confirm,
+  DateField,
+  DateText,
+  EmptyState,
+  ErrorState,
+  Field,
+  LoadingState,
+  Modal,
+  Money,
+  MoneyInput,
+  PageHeader,
+  StatusBadge,
+} from "../components/ui";
 import { useAsync } from "../hooks/useAsync";
 import { api } from "../services/api";
-import type { Account, AccountCategory, Allocation, Invoice, InvoiceCheck, InvoiceItem, Journal, JournalLine, Party, Payment, Period } from "../types/api";
+import type {
+  Account,
+  AccountCategory,
+  Allocation,
+  Invoice,
+  InvoiceCheck,
+  InvoiceItem,
+  Journal,
+  JournalLine,
+  Party,
+  Payment,
+  Period,
+} from "../types/api";
 import { formatMoney, paymentMethodLabel } from "../utils/format";
 import { todayIso } from "../utils/date";
 import { Link } from "../routes/router";
 
-const errorText = (reason: unknown) => reason instanceof Error ? reason.message : "عملیات ناموفق بود.";
-function DetailModal({ title, open, close, children }: { title: string; open: boolean; close: () => void; children: React.ReactNode }) { return <Modal open={open} title={title} onClose={close} wide>{children}</Modal>; }
-function PrerequisiteNotice({ children, to, linkLabel }: { children: React.ReactNode; to: string; linkLabel: string }) { return <div className="alert alert--warning">{children} <Link className="text-button" to={to}>{linkLabel}</Link></div>; }
+const errorText = (reason: unknown) =>
+  reason instanceof Error ? reason.message : "عملیات ناموفق بود.";
+function DetailModal({
+  title,
+  open,
+  close,
+  children,
+}: {
+  title: string;
+  open: boolean;
+  close: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <Modal open={open} title={title} onClose={close} wide>
+      {children}
+    </Modal>
+  );
+}
+function PrerequisiteNotice({
+  children,
+  to,
+  linkLabel,
+}: {
+  children: React.ReactNode;
+  to: string;
+  linkLabel: string;
+}) {
+  return (
+    <div className="alert alert--warning">
+      {children}{" "}
+      <Link className="text-button" to={to}>
+        {linkLabel}
+      </Link>
+    </div>
+  );
+}
 
 export function suggestNextInvoiceNumber(invoices: Invoice[]) {
   const latest = invoices.reduce<Invoice | null>((current, invoice) => {
     if (current === null) return invoice;
-    return Date.parse(invoice.created_at) > Date.parse(current.created_at) ? invoice : current;
+    return Date.parse(invoice.created_at) > Date.parse(current.created_at)
+      ? invoice
+      : current;
   }, null);
   const current = latest?.invoice_number;
   const match = current?.match(/^(.*?)(\d+)$/);
@@ -26,41 +87,1074 @@ export function suggestNextInvoiceNumber(invoices: Invoice[]) {
   return `${prefix}${(BigInt(digits) + 1n).toString().padStart(digits.length, "0")}`;
 }
 
-export function JournalsPage() { const { can } = useAuth(); const state = useAsync(async () => { const [journals, accounts, periods] = await Promise.all([api.get<Journal[]>("/journals"), api.get<Account[]>("/accounts"), api.get<Period[]>("/periods")]); return { journals, accounts, periods }; }, []); const [create, setCreate] = useState(false); const [selected, setSelected] = useState<Journal | null>(null); const [action, setAction] = useState<{ type: "post" | "reverse"; item: Journal } | null>(null); const run = async () => { if (!action) return; await api.post(`/journals/${action.item.id}/${action.type}`); setAction(null); setSelected(null); void state.reload(); };
-  return <><PageHeader title="اسناد حسابداری" description="ثبت، کنترل و نهایی‌سازی اسناد دوطرفه" action={can("journals:write") && <button className="button button--primary" onClick={() => setCreate(true)}>سند جدید</button>}/>{state.loading ? <LoadingState/> : state.error ? <ErrorState message={state.error} retry={state.reload}/> : state.data?.journals.length ? <div className="table-wrap"><table><thead><tr><th>شماره سند</th><th>تاریخ</th><th>شرح</th><th>بدهکار</th><th>بستانکار</th><th>وضعیت</th><th>عملیات</th></tr></thead><tbody>{state.data.journals.map((j) => { const debit = j.lines.reduce((s, l) => s + Number(l.debit), 0); const credit = j.lines.reduce((s, l) => s + Number(l.credit), 0); return <tr key={j.id}><td data-label="شماره سند" dir="ltr"><strong>{j.entry_number}</strong></td><td data-label="تاریخ"><DateText value={j.entry_date}/></td><td data-label="شرح">{j.description}</td><td data-label="بدهکار"><Money value={debit}/></td><td data-label="بستانکار"><Money value={credit}/></td><td data-label="وضعیت"><StatusBadge value={j.status}/></td><td data-label="عملیات"><button className="text-button" onClick={() => setSelected(j)}>جزئیات</button>{j.status === "DRAFT" && can("journals:post") && <button className="text-button" onClick={() => setAction({ type: "post", item: j })}>ثبت نهایی</button>}{j.status === "POSTED" && can("journals:post") && !j.reversal_of_id && !j.entry_number.startsWith("INV-") && !j.entry_number.startsWith("PAY-") && <button className="text-button text-button--danger" onClick={() => setAction({ type: "reverse", item: j })}>برگشت</button>}</td></tr>; })}</tbody></table></div> : <EmptyState title="سندی ثبت نشده است"/>}<JournalCreate open={create} data={state.data} close={() => setCreate(false)} saved={() => { setCreate(false); void state.reload(); }}/><JournalDetail item={selected} accounts={state.data?.accounts ?? []} close={() => setSelected(null)}/><Confirm open={Boolean(action)} title={action?.type === "post" ? "ثبت نهایی سند" : "برگشت سند"} message={action?.type === "post" ? "پس از ثبت نهایی، سند قابل ویرایش نیست. ادامه می‌دهید؟" : "یک سند معکوس جدید برای اصلاح این سند ایجاد می‌شود. ادامه می‌دهید؟"} confirmLabel={action?.type === "post" ? "ثبت نهایی" : "ایجاد سند برگشتی"} onConfirm={() => void run()} onClose={() => setAction(null)}/></>;
+export function JournalsPage() {
+  const { can } = useAuth();
+  const state = useAsync(async () => {
+    const [journals, accounts, periods] = await Promise.all([
+      api.get<Journal[]>("/journals"),
+      api.get<Account[]>("/accounts"),
+      api.get<Period[]>("/periods"),
+    ]);
+    return { journals, accounts, periods };
+  }, []);
+  const [create, setCreate] = useState(false);
+  const [selected, setSelected] = useState<Journal | null>(null);
+  const [action, setAction] = useState<{
+    type: "post" | "reverse";
+    item: Journal;
+  } | null>(null);
+  const run = async () => {
+    if (!action) return;
+    await api.post(`/journals/${action.item.id}/${action.type}`);
+    setAction(null);
+    setSelected(null);
+    void state.reload();
+  };
+  return (
+    <>
+      <PageHeader
+        title="اسناد حسابداری"
+        description="ثبت، کنترل و نهایی‌سازی اسناد دوطرفه"
+        action={
+          can("journals:write") && (
+            <button
+              className="button button--primary"
+              onClick={() => setCreate(true)}
+            >
+              سند جدید
+            </button>
+          )
+        }
+      />
+      {state.loading ? (
+        <LoadingState />
+      ) : state.error ? (
+        <ErrorState message={state.error} retry={state.reload} />
+      ) : state.data?.journals.length ? (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>شماره سند</th>
+                <th>تاریخ</th>
+                <th>شرح</th>
+                <th>بدهکار</th>
+                <th>بستانکار</th>
+                <th>وضعیت</th>
+                <th>عملیات</th>
+              </tr>
+            </thead>
+            <tbody>
+              {state.data.journals.map((j) => {
+                const debit = j.lines.reduce((s, l) => s + Number(l.debit), 0);
+                const credit = j.lines.reduce(
+                  (s, l) => s + Number(l.credit),
+                  0,
+                );
+                return (
+                  <tr key={j.id}>
+                    <td data-label="شماره سند" dir="ltr">
+                      <strong>{j.entry_number}</strong>
+                    </td>
+                    <td data-label="تاریخ">
+                      <DateText value={j.entry_date} />
+                    </td>
+                    <td data-label="شرح">{j.description}</td>
+                    <td data-label="بدهکار">
+                      <Money value={debit} />
+                    </td>
+                    <td data-label="بستانکار">
+                      <Money value={credit} />
+                    </td>
+                    <td data-label="وضعیت">
+                      <StatusBadge value={j.status} />
+                    </td>
+                    <td data-label="عملیات">
+                      <button
+                        className="text-button"
+                        onClick={() => setSelected(j)}
+                      >
+                        جزئیات
+                      </button>
+                      {j.status === "DRAFT" && can("journals:post") && (
+                        <button
+                          className="text-button"
+                          onClick={() => setAction({ type: "post", item: j })}
+                        >
+                          ثبت نهایی
+                        </button>
+                      )}
+                      {j.status === "POSTED" &&
+                        can("journals:post") &&
+                        !j.reversal_of_id &&
+                        !j.entry_number.startsWith("INV-") &&
+                        !j.entry_number.startsWith("PAY-") && (
+                          <button
+                            className="text-button text-button--danger"
+                            onClick={() =>
+                              setAction({ type: "reverse", item: j })
+                            }
+                          >
+                            برگشت
+                          </button>
+                        )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <EmptyState title="سندی ثبت نشده است" />
+      )}
+      <JournalCreate
+        open={create}
+        data={state.data}
+        close={() => setCreate(false)}
+        saved={() => {
+          setCreate(false);
+          void state.reload();
+        }}
+      />
+      <JournalDetail
+        item={selected}
+        accounts={state.data?.accounts ?? []}
+        close={() => setSelected(null)}
+      />
+      <Confirm
+        open={Boolean(action)}
+        title={action?.type === "post" ? "ثبت نهایی سند" : "برگشت سند"}
+        message={
+          action?.type === "post"
+            ? "پس از ثبت نهایی، سند قابل ویرایش نیست. ادامه می‌دهید؟"
+            : "یک سند معکوس جدید برای اصلاح این سند ایجاد می‌شود. ادامه می‌دهید؟"
+        }
+        confirmLabel={
+          action?.type === "post" ? "ثبت نهایی" : "ایجاد سند برگشتی"
+        }
+        onConfirm={() => void run()}
+        onClose={() => setAction(null)}
+      />
+    </>
+  );
 }
-function JournalCreate({ open, data, close, saved }: { open: boolean; data: { accounts: Account[]; periods: Period[]; journals: Journal[] } | null; close: () => void; saved: () => void }) { const activeAccounts = data?.accounts.filter((a) => a.is_active) ?? []; const openPeriods = data?.periods.filter((p) => p.status === "OPEN") ?? []; const prerequisitesReady = activeAccounts.length > 0 && openPeriods.length > 0; const [date, setDate] = useState(todayIso()); const [lines, setLines] = useState<JournalLine[]>([{ account_id: "", description: "", debit: "0", credit: "0" }, { account_id: "", description: "", debit: "0", credit: "0" }]); const [error, setError] = useState(""); const totals = useMemo(() => ({ debit: lines.reduce((s, l) => s + Number(l.debit), 0), credit: lines.reduce((s, l) => s + Number(l.credit), 0) }), [lines]); const update = (index: number, key: keyof JournalLine, value: string) => setLines((old) => old.map((l, i) => i === index ? { ...l, [key]: value } : l)); const submit = async (e: FormEvent<HTMLFormElement>) => { e.preventDefault(); if (totals.debit !== totals.credit || totals.debit <= 0) { setError("جمع بدهکار و بستانکار باید برابر و بیشتر از صفر باشد."); return; } const f = new FormData(e.currentTarget); try { await api.post("/journals", { entry_number: String(f.get("number")), entry_date: date, description: String(f.get("description")), period_id: String(f.get("period")), lines: lines.map(({ account_id, description, debit, credit }) => ({ account_id, description: description || null, debit, credit })) }); saved(); } catch (reason) { setError(errorText(reason)); } };
-  return <Modal open={open} title="سند حسابداری جدید" onClose={close} wide><form className="form" onSubmit={submit}>{error && <div className="alert alert--error">{error}</div>}{openPeriods.length === 0 && <PrerequisiteNotice to="/periods" linkLabel="مدیریت دوره‌های مالی">ابتدا باید حداقل یک دوره مالی باز داشته باشید.</PrerequisiteNotice>}{activeAccounts.length === 0 && <PrerequisiteNotice to="/accounts" linkLabel="مدیریت حساب‌ها">ابتدا باید حداقل یک حساب فعال ثبت کنید.</PrerequisiteNotice>}<div className="form-grid form-grid--3"><Field label="شماره سند"><input name="number" dir="ltr" required/></Field><DateField label="تاریخ سند" value={date} onChange={setDate} required/><Field label="دوره مالی"><select name="period" required disabled={openPeriods.length === 0}><option value="">انتخاب کنید</option>{openPeriods.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></Field></div><Field label="شرح سند"><input name="description" required/></Field><div className="line-editor"><div className="line-editor__head"><span>حساب</span><span>شرح ردیف</span><span>بدهکار</span><span>بستانکار</span><span/></div>{lines.map((line, i) => <div className="line-editor__row" key={i}><select aria-label={`حساب ردیف ${i + 1}`} value={line.account_id} onChange={(e) => update(i, "account_id", e.target.value)} required disabled={activeAccounts.length === 0}><option value="">انتخاب حساب</option>{activeAccounts.map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name}</option>)}</select><input aria-label={`شرح ردیف ${i + 1}`} value={line.description ?? ""} onChange={(e) => update(i, "description", e.target.value)}/><MoneyInput aria-label={`بدهکار ردیف ${i + 1}`} min="0" value={line.debit} onValueChange={(value) => update(i, "debit", value)}/><MoneyInput aria-label={`بستانکار ردیف ${i + 1}`} min="0" value={line.credit} onValueChange={(value) => update(i, "credit", value)}/><button type="button" className="icon-button" disabled={lines.length <= 2} onClick={() => setLines((old) => old.filter((_, index) => index !== i))}>×</button></div>)}<button type="button" className="text-button" onClick={() => setLines((old) => [...old, { account_id: "", description: "", debit: "0", credit: "0" }])}>+ افزودن ردیف</button><div className={`line-totals ${totals.debit === totals.credit && totals.debit > 0 ? "balanced" : "unbalanced"}`}><span>جمع بدهکار: {formatMoney(totals.debit)}</span><span>جمع بستانکار: {formatMoney(totals.credit)}</span><strong>{totals.debit === totals.credit && totals.debit > 0 ? "سند تراز است" : "سند تراز نیست"}</strong></div></div><div className="form-actions"><button type="button" className="button button--secondary" onClick={close}>انصراف</button><button className="button button--primary" disabled={!prerequisitesReady}>ذخیره پیش‌نویس</button></div></form></Modal>;
+function JournalCreate({
+  open,
+  data,
+  close,
+  saved,
+}: {
+  open: boolean;
+  data: { accounts: Account[]; periods: Period[]; journals: Journal[] } | null;
+  close: () => void;
+  saved: () => void;
+}) {
+  const activeAccounts = data?.accounts.filter((a) => a.is_active) ?? [];
+  const openPeriods = data?.periods.filter((p) => p.status === "OPEN") ?? [];
+  const prerequisitesReady =
+    activeAccounts.length > 0 && openPeriods.length > 0;
+  const [date, setDate] = useState(todayIso());
+  const [lines, setLines] = useState<JournalLine[]>([
+    { account_id: "", description: "", debit: "0", credit: "0" },
+    { account_id: "", description: "", debit: "0", credit: "0" },
+  ]);
+  const [error, setError] = useState("");
+  const totals = useMemo(
+    () => ({
+      debit: lines.reduce((s, l) => s + Number(l.debit), 0),
+      credit: lines.reduce((s, l) => s + Number(l.credit), 0),
+    }),
+    [lines],
+  );
+  const update = (index: number, key: keyof JournalLine, value: string) =>
+    setLines((old) =>
+      old.map((l, i) => (i === index ? { ...l, [key]: value } : l)),
+    );
+  const submit = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (totals.debit !== totals.credit || totals.debit <= 0) {
+      setError("جمع بدهکار و بستانکار باید برابر و بیشتر از صفر باشد.");
+      return;
+    }
+    const f = new FormData(e.currentTarget);
+    try {
+      await api.post("/journals", {
+        entry_number: String(f.get("number")),
+        entry_date: date,
+        description: String(f.get("description")),
+        period_id: String(f.get("period")),
+        lines: lines.map(({ account_id, description, debit, credit }) => ({
+          account_id,
+          description: description || null,
+          debit,
+          credit,
+        })),
+      });
+      saved();
+    } catch (reason) {
+      setError(errorText(reason));
+    }
+  };
+  return (
+    <Modal open={open} title="سند حسابداری جدید" onClose={close} wide>
+      <form className="form" onSubmit={submit}>
+        {error && <div className="alert alert--error">{error}</div>}
+        {openPeriods.length === 0 && (
+          <PrerequisiteNotice to="/periods" linkLabel="مدیریت دوره‌های مالی">
+            ابتدا باید حداقل یک دوره مالی باز داشته باشید.
+          </PrerequisiteNotice>
+        )}
+        {activeAccounts.length === 0 && (
+          <PrerequisiteNotice to="/accounts" linkLabel="مدیریت حساب‌ها">
+            ابتدا باید حداقل یک حساب فعال ثبت کنید.
+          </PrerequisiteNotice>
+        )}
+        <div className="form-grid form-grid--3">
+          <Field label="شماره سند">
+            <input name="number" dir="ltr" required />
+          </Field>
+          <DateField
+            label="تاریخ سند"
+            value={date}
+            onChange={setDate}
+            required
+          />
+          <Field label="دوره مالی">
+            <select name="period" required disabled={openPeriods.length === 0}>
+              <option value="">انتخاب کنید</option>
+              {openPeriods.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </div>
+        <Field label="شرح سند">
+          <input name="description" required />
+        </Field>
+        <div className="line-editor">
+          <div className="line-editor__head">
+            <span>حساب</span>
+            <span>شرح ردیف</span>
+            <span>بدهکار</span>
+            <span>بستانکار</span>
+            <span />
+          </div>
+          {lines.map((line, i) => (
+            <div className="line-editor__row" key={i}>
+              <select
+                aria-label={`حساب ردیف ${i + 1}`}
+                value={line.account_id}
+                onChange={(e) => update(i, "account_id", e.target.value)}
+                required
+                disabled={activeAccounts.length === 0}
+              >
+                <option value="">انتخاب حساب</option>
+                {activeAccounts.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.code} · {a.name}
+                  </option>
+                ))}
+              </select>
+              <input
+                aria-label={`شرح ردیف ${i + 1}`}
+                value={line.description ?? ""}
+                onChange={(e) => update(i, "description", e.target.value)}
+              />
+              <MoneyInput
+                aria-label={`بدهکار ردیف ${i + 1}`}
+                min="0"
+                value={line.debit}
+                onValueChange={(value) => update(i, "debit", value)}
+              />
+              <MoneyInput
+                aria-label={`بستانکار ردیف ${i + 1}`}
+                min="0"
+                value={line.credit}
+                onValueChange={(value) => update(i, "credit", value)}
+              />
+              <button
+                type="button"
+                className="icon-button"
+                disabled={lines.length <= 2}
+                onClick={() =>
+                  setLines((old) => old.filter((_, index) => index !== i))
+                }
+              >
+                ×
+              </button>
+            </div>
+          ))}
+          <button
+            type="button"
+            className="text-button"
+            onClick={() =>
+              setLines((old) => [
+                ...old,
+                { account_id: "", description: "", debit: "0", credit: "0" },
+              ])
+            }
+          >
+            + افزودن ردیف
+          </button>
+          <div
+            className={`line-totals ${totals.debit === totals.credit && totals.debit > 0 ? "balanced" : "unbalanced"}`}
+          >
+            <span>جمع بدهکار: {formatMoney(totals.debit)}</span>
+            <span>جمع بستانکار: {formatMoney(totals.credit)}</span>
+            <strong>
+              {totals.debit === totals.credit && totals.debit > 0
+                ? "سند تراز است"
+                : "سند تراز نیست"}
+            </strong>
+          </div>
+        </div>
+        <div className="form-actions">
+          <button
+            type="button"
+            className="button button--secondary"
+            onClick={close}
+          >
+            انصراف
+          </button>
+          <button
+            className="button button--primary"
+            disabled={!prerequisitesReady}
+          >
+            ذخیره پیش‌نویس
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
 }
-function JournalDetail({ item, accounts, close }: { item: Journal | null; accounts: Account[]; close: () => void }) { return <DetailModal open={Boolean(item)} title={`جزئیات سند ${item?.entry_number ?? ""}`} close={close}>{item && <><div className="detail-summary"><span>تاریخ <DateText value={item.entry_date}/></span><span>وضعیت <StatusBadge value={item.status}/></span></div><p>{item.description}</p><div className="table-wrap"><table><thead><tr><th>حساب</th><th>شرح</th><th>بدهکار</th><th>بستانکار</th></tr></thead><tbody>{item.lines.map((l, i) => <tr key={l.id ?? i}><td data-label="حساب">{accounts.find((a) => a.id === l.account_id)?.name ?? l.account_id}</td><td data-label="شرح">{l.description || "—"}</td><td data-label="بدهکار"><Money value={l.debit}/></td><td data-label="بستانکار"><Money value={l.credit}/></td></tr>)}</tbody></table></div></>}</DetailModal>; }
+function JournalDetail({
+  item,
+  accounts,
+  close,
+}: {
+  item: Journal | null;
+  accounts: Account[];
+  close: () => void;
+}) {
+  return (
+    <DetailModal
+      open={Boolean(item)}
+      title={`جزئیات سند ${item?.entry_number ?? ""}`}
+      close={close}
+    >
+      {item && (
+        <>
+          <div className="detail-summary">
+            <span>
+              تاریخ <DateText value={item.entry_date} />
+            </span>
+            <span>
+              وضعیت <StatusBadge value={item.status} />
+            </span>
+          </div>
+          <p>{item.description}</p>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>حساب</th>
+                  <th>شرح</th>
+                  <th>بدهکار</th>
+                  <th>بستانکار</th>
+                </tr>
+              </thead>
+              <tbody>
+                {item.lines.map((l, i) => (
+                  <tr key={l.id ?? i}>
+                    <td data-label="حساب">
+                      {accounts.find((a) => a.id === l.account_id)?.name ??
+                        l.account_id}
+                    </td>
+                    <td data-label="شرح">{l.description || "—"}</td>
+                    <td data-label="بدهکار">
+                      <Money value={l.debit} />
+                    </td>
+                    <td data-label="بستانکار">
+                      <Money value={l.credit} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </DetailModal>
+  );
+}
 
-export function InvoicesPage() { const { t } = useBusiness(); const { can } = useAuth(); const state = useAsync(async () => { const [invoices, parties, accounts, categories] = await Promise.all([api.get<Invoice[]>("/invoices"), api.get<Party[]>("/parties"), api.get<Account[]>("/accounts"), api.get<AccountCategory[]>("/account-categories")]); return { invoices, parties, accounts, categories }; }, []); const [create, setCreate] = useState(false); const [detail, setDetail] = useState<Invoice | null>(null); const [issue, setIssue] = useState<Invoice | null>(null);
-  return <><PageHeader title="فاکتورها" description="صدور و پیگیری فاکتورهای فروش" action={can("invoices:write") && <button className="button button--primary" onClick={() => setCreate(true)}>فاکتور جدید</button>}/>{state.loading ? <LoadingState/> : state.error ? <ErrorState message={state.error} retry={state.reload}/> : state.data?.invoices.length ? <div className="table-wrap"><table><thead><tr><th>شماره</th><th>{t("مشتری")}</th><th>روش پرداخت</th><th>تاریخ</th><th>سررسید</th><th>مبلغ کل</th><th>مانده</th><th>وضعیت</th><th>عملیات</th></tr></thead><tbody>{state.data.invoices.map((x) => <tr key={x.id}><td data-label="شماره" dir="ltr"><strong>{x.invoice_number}</strong></td><td data-label={t("مشتری")}>{state.data?.parties.find((p) => p.id === x.customer_id)?.name}</td><td data-label="روش پرداخت">{x.payment_method ? paymentMethodLabel(x.payment_method) : "ثبت‌نشده"}</td><td data-label="تاریخ"><DateText value={x.issue_date}/></td><td data-label="سررسید"><DateText value={x.due_date}/></td><td data-label="مبلغ کل"><Money value={x.total}/></td><td data-label="مانده"><Money value={x.balance_due}/></td><td data-label="وضعیت"><StatusBadge value={x.status}/></td><td data-label="عملیات"><button className="text-button" onClick={() => setDetail(x)}>جزئیات</button>{x.status === "DRAFT" && can("invoices:issue") && <button className="text-button" onClick={() => setIssue(x)}>صدور</button>}</td></tr>)}</tbody></table></div> : <EmptyState title="فاکتوری ثبت نشده است"/>}<InvoiceCreate open={create} invoices={state.data?.invoices ?? []} close={() => setCreate(false)} saved={() => { setCreate(false); void state.reload(); }}/><InvoiceDetail item={detail} parties={state.data?.parties ?? []} accounts={state.data?.accounts ?? []} close={() => setDetail(null)} saved={() => { setDetail(null); void state.reload(); }}/><InvoiceIssue item={issue} accounts={state.data?.accounts ?? []} categories={state.data?.categories ?? []} close={() => setIssue(null)} saved={() => { setIssue(null); void state.reload(); }}/></>;
+export function InvoicesPage() {
+  const { t } = useBusiness();
+  const { can } = useAuth();
+  const state = useAsync(async () => {
+    const [invoices, parties, accounts, categories] = await Promise.all([
+      api.get<Invoice[]>("/invoices"),
+      api.get<Party[]>("/parties"),
+      api.get<Account[]>("/accounts"),
+      api.get<AccountCategory[]>("/account-categories"),
+    ]);
+    return { invoices, parties, accounts, categories };
+  }, []);
+  const [create, setCreate] = useState(false);
+  const [detail, setDetail] = useState<Invoice | null>(null);
+  const [issue, setIssue] = useState<Invoice | null>(null);
+  return (
+    <>
+      <PageHeader
+        title="فاکتورها"
+        description="صدور و پیگیری فاکتورهای فروش"
+        action={
+          can("invoices:write") && (
+            <button
+              className="button button--primary"
+              onClick={() => setCreate(true)}
+            >
+              فاکتور جدید
+            </button>
+          )
+        }
+      />
+      {state.loading ? (
+        <LoadingState />
+      ) : state.error ? (
+        <ErrorState message={state.error} retry={state.reload} />
+      ) : state.data?.invoices.length ? (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>شماره</th>
+                <th>{t("مشتری")}</th>
+                <th>روش پرداخت</th>
+                <th>تاریخ</th>
+                <th>سررسید</th>
+                <th>مبلغ کل</th>
+                <th>مانده</th>
+                <th>وضعیت</th>
+                <th>عملیات</th>
+              </tr>
+            </thead>
+            <tbody>
+              {state.data.invoices.map((x) => (
+                <tr key={x.id}>
+                  <td data-label="شماره" dir="ltr">
+                    <strong>{x.invoice_number}</strong>
+                  </td>
+                  <td data-label={t("مشتری")}>
+                    {
+                      state.data?.parties.find((p) => p.id === x.customer_id)
+                        ?.name
+                    }
+                  </td>
+                  <td data-label="روش پرداخت">
+                    {x.payment_method
+                      ? paymentMethodLabel(x.payment_method)
+                      : "ثبت‌نشده"}
+                  </td>
+                  <td data-label="تاریخ">
+                    <DateText value={x.issue_date} />
+                  </td>
+                  <td data-label="سررسید">
+                    <DateText value={x.due_date} />
+                  </td>
+                  <td data-label="مبلغ کل">
+                    <Money value={x.total} />
+                  </td>
+                  <td data-label="مانده">
+                    <Money value={x.balance_due} />
+                  </td>
+                  <td data-label="وضعیت">
+                    <StatusBadge value={x.status} />
+                  </td>
+                  <td data-label="عملیات">
+                    <button
+                      className="text-button"
+                      onClick={() => setDetail(x)}
+                    >
+                      جزئیات
+                    </button>
+                    {x.status === "DRAFT" && can("invoices:issue") && (
+                      <button
+                        className="text-button"
+                        onClick={() => setIssue(x)}
+                      >
+                        صدور
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <EmptyState title="فاکتوری ثبت نشده است" />
+      )}
+      <InvoiceCreate
+        open={create}
+        invoices={state.data?.invoices ?? []}
+        close={() => setCreate(false)}
+        saved={() => {
+          setCreate(false);
+          void state.reload();
+        }}
+      />
+      <InvoiceDetail
+        item={detail}
+        parties={state.data?.parties ?? []}
+        accounts={state.data?.accounts ?? []}
+        close={() => setDetail(null)}
+        saved={() => {
+          setDetail(null);
+          void state.reload();
+        }}
+      />
+      <InvoiceIssue
+        item={issue}
+        accounts={state.data?.accounts ?? []}
+        categories={state.data?.categories ?? []}
+        close={() => setIssue(null)}
+        saved={() => {
+          setIssue(null);
+          void state.reload();
+        }}
+      />
+    </>
+  );
 }
 
-type DraftCheck = { amount: string; sayad_id: string; due_date: string; status: "PENDING" | "BOUNCED" };
-function InvoiceCreate({ open, invoices, close, saved }: { open: boolean; invoices: Invoice[]; close: () => void; saved: () => void }) { const { t, profile } = useBusiness(); const [issueDate, setIssueDate] = useState(todayIso()); const [method, setMethod] = useState<"CASH" | "CHECK">("CASH"); const [checkCount, setCheckCount] = useState(1); const [checks, setChecks] = useState<DraftCheck[]>([{ amount: "0", sayad_id: "", due_date: todayIso(), status: "PENDING" }]); const [items, setItems] = useState<InvoiceItem[]>([{ product_id: null, description: "", quantity: "1", unit_price: "0", tax: "0" }]); const [error, setError] = useState(""); const [busy, setBusy] = useState(false); const update = (i: number, key: keyof InvoiceItem, value: string | null) => setItems((old) => old.map((x, index) => index === i ? { ...x, [key]: value } : x)); const updateCheck = (i: number, key: keyof DraftCheck, value: string) => setChecks((old) => old.map((x, index) => index === i ? { ...x, [key]: value } : x)); const resizeChecks = (count: number) => { const safe = Math.max(1, Math.min(50, count || 1)); setCheckCount(safe); setChecks((old) => Array.from({ length: safe }, (_, i) => old[i] ?? { amount: "0", sayad_id: "", due_date: issueDate, status: "PENDING" })); }; const preview = items.reduce((s, x) => s + Number(x.quantity) * Number(x.unit_price) + Number(x.tax), 0); const checkTotal = checks.reduce((sum, check) => sum + Number(check.amount), 0); const submit = async (e: FormEvent<HTMLFormElement>) => { e.preventDefault(); if (busy) return; const f = new FormData(e.currentTarget); setBusy(true); setError(""); try { await api.post("/invoices", { invoice_number: String(f.get("number")), customer_name: String(f.get("customerName")), issue_date: issueDate, due_date: issueDate, payment_method: method, checks: method === "CHECK" ? checks.map((check) => ({ ...check, sayad_id: check.sayad_id.trim() || null })) : [], items: items.map((x) => ({ product_id: null, description: x.description, quantity: x.quantity, unit_price: x.unit_price || null, tax: x.tax })) }); saved(); } catch (reason) { setError(errorText(reason)); } finally { setBusy(false); } };
+type DraftCheck = {
+  amount: string;
+  sayad_id: string;
+  due_date: string;
+  status: "PENDING" | "BOUNCED";
+};
+function InvoiceCreate({
+  open,
+  invoices,
+  close,
+  saved,
+}: {
+  open: boolean;
+  invoices: Invoice[];
+  close: () => void;
+  saved: () => void;
+}) {
+  const { t, profile } = useBusiness();
+  const [issueDate, setIssueDate] = useState(todayIso());
+  const [method, setMethod] = useState<"CASH" | "CHECK">("CASH");
+  const [checkCount, setCheckCount] = useState(1);
+  const [checks, setChecks] = useState<DraftCheck[]>([
+    { amount: "0", sayad_id: "", due_date: todayIso(), status: "PENDING" },
+  ]);
+  const [items, setItems] = useState<InvoiceItem[]>([
+    {
+      product_id: null,
+      description: "",
+      quantity: "1",
+      unit_price: "0",
+      tax: "0",
+    },
+  ]);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const update = (i: number, key: keyof InvoiceItem, value: string | null) =>
+    setItems((old) =>
+      old.map((x, index) => (index === i ? { ...x, [key]: value } : x)),
+    );
+  const updateCheck = (i: number, key: keyof DraftCheck, value: string) =>
+    setChecks((old) =>
+      old.map((x, index) => (index === i ? { ...x, [key]: value } : x)),
+    );
+  const resizeChecks = (count: number) => {
+    const safe = Math.max(1, Math.min(50, count || 1));
+    setCheckCount(safe);
+    setChecks((old) =>
+      Array.from(
+        { length: safe },
+        (_, i) =>
+          old[i] ?? {
+            amount: "0",
+            sayad_id: "",
+            due_date: issueDate,
+            status: "PENDING",
+          },
+      ),
+    );
+  };
+  const preview = items.reduce(
+    (s, x) => s + Number(x.quantity) * Number(x.unit_price) + Number(x.tax),
+    0,
+  );
+  const checkTotal = checks.reduce(
+    (sum, check) => sum + Number(check.amount),
+    0,
+  );
+  const submit = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (busy) return;
+    const f = new FormData(e.currentTarget);
+    setBusy(true);
+    setError("");
+    try {
+      await api.post("/invoices", {
+        invoice_number: String(f.get("number")),
+        customer_name: String(f.get("customerName")),
+        issue_date: issueDate,
+        due_date: issueDate,
+        payment_method: method,
+        checks:
+          method === "CHECK"
+            ? checks.map((check) => ({
+                ...check,
+                sayad_id: check.sayad_id.trim() || null,
+              }))
+            : [],
+        items: items.map((x) => ({
+          product_id: null,
+          description: x.description,
+          quantity: x.quantity,
+          unit_price: x.unit_price || null,
+          tax: x.tax,
+        })),
+      });
+      saved();
+    } catch (reason) {
+      setError(errorText(reason));
+    } finally {
+      setBusy(false);
+    }
+  };
   const checkShortfall = Math.max(0, preview - checkTotal);
   const checkExcess = Math.max(0, checkTotal - preview);
-  return <Modal open={open} title="فاکتور فروش جدید" onClose={close} wide><form className="form" onSubmit={submit}>{error && <div className="alert alert--error">{error}</div>}{profile.limitation && <p className="form-note business-form-note">{profile.workflow} — {profile.limitation}</p>}<div className="form-grid form-grid--2"><Field label="شماره فاکتور"><input name="number" dir="ltr" defaultValue={suggestNextInvoiceNumber(invoices)} required disabled={busy}/></Field><Field label="نام مشتری"><input name="customerName" required maxLength={200} disabled={busy} placeholder={`نام ${profile.customer} را وارد کنید`}/></Field><DateField label="تاریخ صدور" value={issueDate} onChange={setIssueDate} required/><Field label="روش پرداخت"><select value={method} onChange={(e) => setMethod(e.target.value as "CASH" | "CHECK")} disabled={busy}><option value="CASH">نقدی</option><option value="CHECK">چک</option></select></Field>{method === "CHECK" && <Field label="تعداد چک"><input type="number" min="1" max="50" value={checkCount} onChange={(e) => resizeChecks(Number(e.target.value))} required disabled={busy}/></Field>}</div><h3>{t("اقلام فاکتور")}</h3><div className="invoice-items">{items.map((x, i) => <div className="invoice-item invoice-item--typed" key={i}><Field label="کالا/خدمت"><input value={x.description} onChange={(e) => update(i, "description", e.target.value)} required disabled={busy} placeholder={profile.itemPlaceholder}/></Field><Field label="تعداد"><input type="number" dir="ltr" min="0.0001" step="0.0001" value={x.quantity} onChange={(e) => update(i, "quantity", e.target.value)} required disabled={busy}/></Field><Field label="قیمت واحد"><MoneyInput min="0" value={x.unit_price ?? ""} onValueChange={(value) => update(i, "unit_price", value)} required disabled={busy}/></Field><Field label="مالیات"><MoneyInput min="0" value={x.tax} onValueChange={(value) => update(i, "tax", value)} disabled={busy}/></Field><button type="button" className="icon-button" disabled={items.length === 1 || busy} onClick={() => setItems((old) => old.filter((_, index) => index !== i))}>×</button></div>)}</div><div className="preview-total"><span>جمع تقریبی برای بررسی</span><Money value={preview}/><small>مبلغ قطعی را سرور محاسبه می‌کند.</small></div><button type="button" className="text-button" disabled={busy} onClick={() => setItems((old) => [...old, { product_id: null, description: "", quantity: "1", unit_price: "0", tax: "0" }])}>+ افزودن قلم</button>{method === "CHECK" && <><h3>اطلاعات چک‌ها</h3><div className="check-editor">{checks.map((check, i) => <div className="check-row" key={i}><strong>چک {i + 1}</strong><Field label="مبلغ چک"><MoneyInput min="0.01" value={check.amount} onValueChange={(value) => updateCheck(i, "amount", value)} required disabled={busy}/></Field><Field label="شناسه صیادی (اختیاری)"><input dir="ltr" value={check.sayad_id} onChange={(e) => updateCheck(i, "sayad_id", e.target.value)} maxLength={32} disabled={busy}/></Field><DateField label="تاریخ سررسید چک" value={check.due_date} onChange={(value) => updateCheck(i, "due_date", value)} required/><Field label="وضعیت اولیه"><select value={check.status} onChange={(e) => updateCheck(i, "status", e.target.value)} disabled={busy}><option value="PENDING">در انتظار</option><option value="BOUNCED">برگشتی</option></select></Field></div>)}</div><div className="line-totals balanced"><span>جمع چک‌ها: {formatMoney(checkTotal)}</span><span>مبلغ فاکتور: {formatMoney(preview)}</span><strong>{checkShortfall > 0.001 ? `مانده ${formatMoney(checkShortfall)} به‌عنوان بدهی مشتری به فروشنده باقی می‌ماند` : checkExcess > 0.001 ? `مبلغ اضافه ${formatMoney(checkExcess)} پس از وصول به‌عنوان اعتبار مشتری و بدهی فروشنده ثبت می‌شود` : "مبالغ برابرند"}</strong></div></>}<div className="form-actions"><button type="button" className="button button--secondary" onClick={close} disabled={busy}>انصراف</button><button className="button button--primary" disabled={busy}>{busy ? "در حال ذخیره…" : "ذخیره پیش‌نویس"}</button></div></form></Modal>;
+  return (
+    <Modal open={open} title="فاکتور فروش جدید" onClose={close} wide>
+      <form className="form" onSubmit={submit}>
+        {error && <div className="alert alert--error">{error}</div>}
+        {profile.limitation && (
+          <p className="form-note business-form-note">
+            {profile.workflow} — {profile.limitation}
+          </p>
+        )}
+        <div className="form-grid form-grid--2">
+          <Field label="شماره فاکتور">
+            <input
+              name="number"
+              dir="ltr"
+              defaultValue={suggestNextInvoiceNumber(invoices)}
+              required
+              disabled={busy}
+            />
+          </Field>
+          <Field label="نام مشتری">
+            <input
+              name="customerName"
+              required
+              maxLength={200}
+              disabled={busy}
+              placeholder={`نام ${profile.customer} را وارد کنید`}
+            />
+          </Field>
+          <DateField
+            label="تاریخ صدور"
+            value={issueDate}
+            onChange={setIssueDate}
+            required
+          />
+          <Field label="روش پرداخت">
+            <select
+              value={method}
+              onChange={(e) => setMethod(e.target.value as "CASH" | "CHECK")}
+              disabled={busy}
+            >
+              <option value="CASH">نقدی</option>
+              <option value="CHECK">چک</option>
+            </select>
+          </Field>
+          {method === "CHECK" && (
+            <Field label="تعداد چک">
+              <input
+                type="number"
+                min="1"
+                max="50"
+                value={checkCount}
+                onChange={(e) => resizeChecks(Number(e.target.value))}
+                required
+                disabled={busy}
+              />
+            </Field>
+          )}
+        </div>
+        <h3>{t("اقلام فاکتور")}</h3>
+        <div className="invoice-items">
+          {items.map((x, i) => (
+            <div className="invoice-item invoice-item--typed" key={i}>
+              <Field label="کالا/خدمت">
+                <input
+                  value={x.description}
+                  onChange={(e) => update(i, "description", e.target.value)}
+                  required
+                  disabled={busy}
+                  placeholder={profile.itemPlaceholder}
+                />
+              </Field>
+              <Field label="تعداد">
+                <input
+                  type="number"
+                  dir="ltr"
+                  min="0.0001"
+                  step="0.0001"
+                  value={x.quantity}
+                  onChange={(e) => update(i, "quantity", e.target.value)}
+                  required
+                  disabled={busy}
+                />
+              </Field>
+              <Field label="قیمت واحد">
+                <MoneyInput
+                  min="0"
+                  value={x.unit_price ?? ""}
+                  onValueChange={(value) => update(i, "unit_price", value)}
+                  required
+                  disabled={busy}
+                />
+              </Field>
+              <Field label="مالیات">
+                <MoneyInput
+                  min="0"
+                  value={x.tax}
+                  onValueChange={(value) => update(i, "tax", value)}
+                  disabled={busy}
+                />
+              </Field>
+              <button
+                type="button"
+                className="icon-button"
+                disabled={items.length === 1 || busy}
+                onClick={() =>
+                  setItems((old) => old.filter((_, index) => index !== i))
+                }
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+        <div className="preview-total">
+          <span>جمع تقریبی برای بررسی</span>
+          <Money value={preview} />
+          <small>مبلغ قطعی را سرور محاسبه می‌کند.</small>
+        </div>
+        <button
+          type="button"
+          className="text-button"
+          disabled={busy}
+          onClick={() =>
+            setItems((old) => [
+              ...old,
+              {
+                product_id: null,
+                description: "",
+                quantity: "1",
+                unit_price: "0",
+                tax: "0",
+              },
+            ])
+          }
+        >
+          + افزودن قلم
+        </button>
+        {method === "CHECK" && (
+          <>
+            <h3>اطلاعات چک‌ها</h3>
+            <div className="check-editor">
+              {checks.map((check, i) => (
+                <div className="check-row" key={i}>
+                  <strong>چک {i + 1}</strong>
+                  <Field label="مبلغ چک">
+                    <MoneyInput
+                      min="0.01"
+                      value={check.amount}
+                      onValueChange={(value) => updateCheck(i, "amount", value)}
+                      required
+                      disabled={busy}
+                    />
+                  </Field>
+                  <Field label="شناسه صیادی (اختیاری)">
+                    <input
+                      dir="ltr"
+                      value={check.sayad_id}
+                      onChange={(e) =>
+                        updateCheck(i, "sayad_id", e.target.value)
+                      }
+                      maxLength={32}
+                      disabled={busy}
+                    />
+                  </Field>
+                  <DateField
+                    label="تاریخ سررسید چک"
+                    value={check.due_date}
+                    onChange={(value) => updateCheck(i, "due_date", value)}
+                    required
+                  />
+                  <Field label="وضعیت اولیه">
+                    <select
+                      value={check.status}
+                      onChange={(e) => updateCheck(i, "status", e.target.value)}
+                      disabled={busy}
+                    >
+                      <option value="PENDING">در انتظار</option>
+                      <option value="BOUNCED">برگشتی</option>
+                    </select>
+                  </Field>
+                </div>
+              ))}
+            </div>
+            <div className="line-totals balanced">
+              <span>جمع چک‌ها: {formatMoney(checkTotal)}</span>
+              <span>مبلغ فاکتور: {formatMoney(preview)}</span>
+              <strong>
+                {checkShortfall > 0.001
+                  ? `مانده ${formatMoney(checkShortfall)} به‌عنوان بدهی مشتری به فروشنده باقی می‌ماند`
+                  : checkExcess > 0.001
+                    ? `مبلغ اضافه ${formatMoney(checkExcess)} پس از وصول به‌عنوان اعتبار مشتری و بدهی فروشنده ثبت می‌شود`
+                    : "مبالغ برابرند"}
+              </strong>
+            </div>
+          </>
+        )}
+        <div className="form-actions">
+          <button
+            type="button"
+            className="button button--secondary"
+            onClick={close}
+            disabled={busy}
+          >
+            انصراف
+          </button>
+          <button className="button button--primary" disabled={busy}>
+            {busy ? "در حال ذخیره…" : "ذخیره پیش‌نویس"}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
 }
 
-function InvoiceDetail({ item, parties, accounts, close, saved }: { item: Invoice | null; parties: Party[]; accounts: Account[]; close: () => void; saved: () => void }) { const { t } = useBusiness();
+function InvoiceDetail({
+  item,
+  parties,
+  accounts,
+  close,
+  saved,
+}: {
+  item: Invoice | null;
+  parties: Party[];
+  accounts: Account[];
+  close: () => void;
+  saved: () => void;
+}) {
+  const { t } = useBusiness();
   const [editing, setEditing] = useState<InvoiceCheck | null>(null);
-  return <><DetailModal open={Boolean(item)} title={`فاکتور ${item?.invoice_number ?? ""}`} close={close}>{item && <><div className="detail-summary"><span>مشتری <strong>{parties.find((p) => p.id === item.customer_id)?.name}</strong></span><span>روش پرداخت <strong>{item.payment_method ? paymentMethodLabel(item.payment_method) : "ثبت‌نشده"}</strong></span><span>صدور <DateText value={item.issue_date}/></span><span>سررسید <DateText value={item.due_date}/></span><StatusBadge value={item.status}/></div><div className="table-wrap"><table><thead><tr><th>{t("کالا/خدمت")}</th><th>تعداد</th><th>{t("قیمت واحد")}</th><th>مالیات</th><th>جمع</th></tr></thead><tbody>{item.items.map((x, i) => <tr key={x.id ?? i}><td data-label={t("کالا/خدمت")}>{x.description}</td><td data-label="تعداد" dir="ltr">{x.quantity}</td><td data-label={t("قیمت واحد")}><Money value={x.unit_price ?? 0}/></td><td data-label="مالیات"><Money value={x.tax}/></td><td data-label="جمع"><Money value={x.line_total ?? 0}/></td></tr>)}</tbody></table></div>{item.checks.length > 0 && <><h3>چک‌ها</h3><div className="table-wrap"><table><thead><tr><th>شناسه صیادی</th><th>مبلغ</th><th>سررسید</th><th>وضعیت</th><th>تاریخ وصول</th><th>عملیات</th></tr></thead><tbody>{item.checks.map((check) => <tr key={check.id}><td data-label="شناسه صیادی" dir="ltr">{check.sayad_id || "—"}</td><td data-label="مبلغ"><Money value={check.amount}/></td><td data-label="سررسید"><DateText value={check.due_date}/></td><td data-label="وضعیت"><StatusBadge value={check.status}/></td><td data-label="تاریخ وصول"><DateText value={check.cleared_date}/></td><td data-label="عملیات">{check.status === "CLEARED" ? <span>نهایی</span> : <button className="text-button" onClick={() => setEditing(check)}>ویرایش وضعیت</button>}</td></tr>)}</tbody></table></div></>}<div className="invoice-totals"><div><span>جمع جزء</span><Money value={item.subtotal}/></div><div><span>مالیات</span><Money value={item.tax}/></div><div><span>مبلغ کل</span><Money value={item.total}/></div><div><span>پرداخت‌شده</span><Money value={item.amount_paid}/></div><div className="total"><span>مانده قابل دریافت</span><Money value={item.balance_due}/></div></div></>}</DetailModal><InvoiceCheckEdit item={editing} invoice={item} accounts={accounts} close={() => setEditing(null)} saved={saved}/></>;
+  return (
+    <>
+      <DetailModal
+        open={Boolean(item)}
+        title={`فاکتور ${item?.invoice_number ?? ""}`}
+        close={close}
+      >
+        {item && (
+          <>
+            <div className="detail-summary">
+              <span>
+                مشتری{" "}
+                <strong>
+                  {parties.find((p) => p.id === item.customer_id)?.name}
+                </strong>
+              </span>
+              <span>
+                روش پرداخت{" "}
+                <strong>
+                  {item.payment_method
+                    ? paymentMethodLabel(item.payment_method)
+                    : "ثبت‌نشده"}
+                </strong>
+              </span>
+              <span>
+                صدور <DateText value={item.issue_date} />
+              </span>
+              <span>
+                سررسید <DateText value={item.due_date} />
+              </span>
+              <StatusBadge value={item.status} />
+            </div>
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>{t("کالا/خدمت")}</th>
+                    <th>تعداد</th>
+                    <th>{t("قیمت واحد")}</th>
+                    <th>مالیات</th>
+                    <th>جمع</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {item.items.map((x, i) => (
+                    <tr key={x.id ?? i}>
+                      <td data-label={t("کالا/خدمت")}>{x.description}</td>
+                      <td data-label="تعداد" dir="ltr">
+                        {x.quantity}
+                      </td>
+                      <td data-label={t("قیمت واحد")}>
+                        <Money value={x.unit_price ?? 0} />
+                      </td>
+                      <td data-label="مالیات">
+                        <Money value={x.tax} />
+                      </td>
+                      <td data-label="جمع">
+                        <Money value={x.line_total ?? 0} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {item.checks.length > 0 && (
+              <>
+                <h3>چک‌ها</h3>
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>شناسه صیادی</th>
+                        <th>مبلغ</th>
+                        <th>سررسید</th>
+                        <th>وضعیت</th>
+                        <th>تاریخ وصول</th>
+                        <th>عملیات</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {item.checks.map((check) => (
+                        <tr key={check.id}>
+                          <td data-label="شناسه صیادی" dir="ltr">
+                            {check.sayad_id || "—"}
+                          </td>
+                          <td data-label="مبلغ">
+                            <Money value={check.amount} />
+                          </td>
+                          <td data-label="سررسید">
+                            <DateText value={check.due_date} />
+                          </td>
+                          <td data-label="وضعیت">
+                            <StatusBadge value={check.status} />
+                          </td>
+                          <td data-label="تاریخ وصول">
+                            <DateText value={check.cleared_date} />
+                          </td>
+                          <td data-label="عملیات">
+                            {check.status === "CLEARED" ? (
+                              <span>نهایی</span>
+                            ) : (
+                              <button
+                                className="text-button"
+                                onClick={() => setEditing(check)}
+                              >
+                                ویرایش وضعیت
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+            <div className="invoice-totals">
+              <div>
+                <span>جمع جزء</span>
+                <Money value={item.subtotal} />
+              </div>
+              <div>
+                <span>مالیات</span>
+                <Money value={item.tax} />
+              </div>
+              <div>
+                <span>مبلغ کل</span>
+                <Money value={item.total} />
+              </div>
+              <div>
+                <span>پرداخت‌شده</span>
+                <Money value={item.amount_paid} />
+              </div>
+              <div className="total">
+                <span>مانده قابل دریافت</span>
+                <Money value={item.balance_due} />
+              </div>
+            </div>
+          </>
+        )}
+      </DetailModal>
+      <InvoiceCheckEdit
+        item={editing}
+        invoice={item}
+        accounts={accounts}
+        close={() => setEditing(null)}
+        saved={saved}
+      />
+    </>
+  );
 }
 
-function InvoiceCheckEdit({ item, invoice, accounts, close, saved }: { item: InvoiceCheck | null; invoice: Invoice | null; accounts: Account[]; close: () => void; saved: () => void }) {
-  const [status, setStatus] = useState<"PENDING" | "CLEARED" | "BOUNCED">(item?.status ?? "PENDING");
+function InvoiceCheckEdit({
+  item,
+  invoice,
+  accounts,
+  close,
+  saved,
+}: {
+  item: InvoiceCheck | null;
+  invoice: Invoice | null;
+  accounts: Account[];
+  close: () => void;
+  saved: () => void;
+}) {
+  const [status, setStatus] = useState<"PENDING" | "CLEARED" | "BOUNCED">(
+    item?.status ?? "PENDING",
+  );
   const [clearedDate, setClearedDate] = useState(todayIso());
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  useEffect(() => { setStatus(item?.status ?? "PENDING"); setClearedDate(todayIso()); setError(""); }, [item]);
-  const cashAccounts = accounts.filter((account) => account.is_active && account.posting_role === "CASH");
-  const customerCreditAccounts = accounts.filter((account) => account.is_active && account.posting_role === "CUSTOMER_CREDIT");
-  const excess = Math.max(0, Number(item?.amount ?? 0) - Number(invoice?.balance_due ?? 0));
+  useEffect(() => {
+    setStatus(item?.status ?? "PENDING");
+    setClearedDate(todayIso());
+    setError("");
+  }, [item]);
+  const cashAccounts = accounts.filter(
+    (account) => account.is_active && account.posting_role === "CASH",
+  );
+  const customerCreditAccounts = accounts.filter(
+    (account) =>
+      account.is_active && account.posting_role === "CUSTOMER_CREDIT",
+  );
+  const excess = Math.max(
+    0,
+    Number(item?.amount ?? 0) - Number(invoice?.balance_due ?? 0),
+  );
   const needsCustomerCredit = status === "CLEARED" && excess > 0.001;
-  const ready = cashAccounts.length > 0 && (!needsCustomerCredit || customerCreditAccounts.length > 0);
+  const ready =
+    cashAccounts.length > 0 &&
+    (!needsCustomerCredit || customerCreditAccounts.length > 0);
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!item || busy) return;
@@ -70,11 +1164,15 @@ function InvoiceCheckEdit({ item, invoice, accounts, close, saved }: { item: Inv
     try {
       await api.patch(`/invoice-checks/${item.id}`, {
         status,
-        ...(status === "CLEARED" ? {
-          cash_account_id: String(form.get("cashAccount")),
-          customer_credit_account_id: needsCustomerCredit ? String(form.get("customerCreditAccount")) : null,
-          cleared_date: clearedDate,
-        } : {}),
+        ...(status === "CLEARED"
+          ? {
+              cash_account_id: String(form.get("cashAccount")),
+              customer_credit_account_id: needsCustomerCredit
+                ? String(form.get("customerCreditAccount"))
+                : null,
+              cleared_date: clearedDate,
+            }
+          : {}),
       });
       saved();
     } catch (reason) {
@@ -83,14 +1181,119 @@ function InvoiceCheckEdit({ item, invoice, accounts, close, saved }: { item: Inv
       setBusy(false);
     }
   };
-  return <Modal open={Boolean(item)} title="ویرایش وضعیت چک" onClose={close}><form className="form" onSubmit={submit}>{error && <div className="alert alert--error">{error}</div>}<Field label="وضعیت چک"><select value={status} onChange={(event) => setStatus(event.target.value as typeof status)} disabled={busy}><option value="PENDING">در انتظار</option><option value="BOUNCED">برگشتی</option><option value="CLEARED">وصول‌شده</option></select></Field>{status === "CLEARED" && <><div className="alert alert--warning">ثبت وصول، دریافت را در حسابداری نهایی می‌کند و دیگر قابل ویرایش نیست.</div>{needsCustomerCredit && <div className="alert alert--warning">مبلغ اضافه: <Money value={excess}/> — پس از وصول به‌عنوان اعتبار مشتری ثبت می‌شود.</div>}<Field label="حساب نقد/بانک"><select name="cashAccount" required disabled={busy || !ready}><option value="">انتخاب کنید</option>{cashAccounts.map((account) => <option key={account.id} value={account.id}>{account.code} · {account.name}</option>)}</select></Field>{needsCustomerCredit && <Field label="حساب اعتبار مشتری"><select name="customerCreditAccount" required disabled={busy || !ready}><option value="">انتخاب کنید</option>{customerCreditAccounts.map((account) => <option key={account.id} value={account.id}>{account.code} · {account.name}</option>)}</select></Field>}{!ready && <PrerequisiteNotice to="/accounts" linkLabel="مدیریت حساب‌ها">ابتدا حساب‌های فعال با نقش نقد/بانک{needsCustomerCredit ? " و اعتبار مشتری" : ""} ثبت کنید.</PrerequisiteNotice>}<DateField label="تاریخ وصول" value={clearedDate} onChange={setClearedDate} required/></>}<div className="form-actions"><button type="button" className="button button--secondary" onClick={close} disabled={busy}>انصراف</button><button className="button button--primary" disabled={busy || (status === "CLEARED" && !ready)}>{busy ? "در حال ذخیره…" : "ذخیره وضعیت"}</button></div></form></Modal>;
+  return (
+    <Modal open={Boolean(item)} title="ویرایش وضعیت چک" onClose={close}>
+      <form className="form" onSubmit={submit}>
+        {error && <div className="alert alert--error">{error}</div>}
+        <Field label="وضعیت چک">
+          <select
+            value={status}
+            onChange={(event) => setStatus(event.target.value as typeof status)}
+            disabled={busy}
+          >
+            <option value="PENDING">در انتظار</option>
+            <option value="BOUNCED">برگشتی</option>
+            <option value="CLEARED">وصول‌شده</option>
+          </select>
+        </Field>
+        {status === "CLEARED" && (
+          <>
+            <div className="alert alert--warning">
+              ثبت وصول، دریافت را در حسابداری نهایی می‌کند و دیگر قابل ویرایش
+              نیست.
+            </div>
+            {needsCustomerCredit && (
+              <div className="alert alert--warning">
+                مبلغ اضافه: <Money value={excess} /> — پس از وصول به‌عنوان
+                اعتبار مشتری ثبت می‌شود.
+              </div>
+            )}
+            <Field label="حساب نقد/بانک">
+              <select name="cashAccount" required disabled={busy || !ready}>
+                <option value="">انتخاب کنید</option>
+                {cashAccounts.map((account) => (
+                  <option key={account.id} value={account.id}>
+                    {account.code} · {account.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            {needsCustomerCredit && (
+              <Field label="حساب اعتبار مشتری">
+                <select
+                  name="customerCreditAccount"
+                  required
+                  disabled={busy || !ready}
+                >
+                  <option value="">انتخاب کنید</option>
+                  {customerCreditAccounts.map((account) => (
+                    <option key={account.id} value={account.id}>
+                      {account.code} · {account.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            )}
+            {!ready && (
+              <PrerequisiteNotice to="/accounts" linkLabel="مدیریت حساب‌ها">
+                ابتدا حساب‌های فعال با نقش نقد/بانک
+                {needsCustomerCredit ? " و اعتبار مشتری" : ""} ثبت کنید.
+              </PrerequisiteNotice>
+            )}
+            <DateField
+              label="تاریخ وصول"
+              value={clearedDate}
+              onChange={setClearedDate}
+              required
+            />
+          </>
+        )}
+        <div className="form-actions">
+          <button
+            type="button"
+            className="button button--secondary"
+            onClick={close}
+            disabled={busy}
+          >
+            انصراف
+          </button>
+          <button
+            className="button button--primary"
+            disabled={busy || (status === "CLEARED" && !ready)}
+          >
+            {busy ? "در حال ذخیره…" : "ذخیره وضعیت"}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
 }
-function InvoiceIssue({ item, accounts, close, saved }: { item: Invoice | null; accounts: Account[]; categories: AccountCategory[]; close: () => void; saved: () => void }) {
-  const receivableAccounts = accounts.filter((account) => account.is_active && account.posting_role === "RECEIVABLE");
-  const revenueAccounts = accounts.filter((account) => account.is_active && account.posting_role === "REVENUE");
-  const taxAccounts = accounts.filter((account) => account.is_active && account.posting_role === "TAX_LIABILITY");
+function InvoiceIssue({
+  item,
+  accounts,
+  close,
+  saved,
+}: {
+  item: Invoice | null;
+  accounts: Account[];
+  categories: AccountCategory[];
+  close: () => void;
+  saved: () => void;
+}) {
+  const receivableAccounts = accounts.filter(
+    (account) => account.is_active && account.posting_role === "RECEIVABLE",
+  );
+  const revenueAccounts = accounts.filter(
+    (account) => account.is_active && account.posting_role === "REVENUE",
+  );
+  const taxAccounts = accounts.filter(
+    (account) => account.is_active && account.posting_role === "TAX_LIABILITY",
+  );
   const taxed = Number(item?.tax ?? 0) > 0;
-  const ready = receivableAccounts.length > 0 && revenueAccounts.length > 0 && (!taxed || taxAccounts.length > 0);
+  const ready =
+    receivableAccounts.length > 0 &&
+    revenueAccounts.length > 0 &&
+    (!taxed || taxAccounts.length > 0);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const submit = async (e: FormEvent<HTMLFormElement>) => {
@@ -100,7 +1303,13 @@ function InvoiceIssue({ item, accounts, close, saved }: { item: Invoice | null; 
     setBusy(true);
     setError("");
     try {
-      await api.post(`/invoices/${item.id}/issue`, { receivable_account_id: String(f.get("receivable")), revenue_account_id: String(f.get("revenue")), ...(taxed ? { tax_liability_account_id: String(f.get("taxLiability")) } : {}) });
+      await api.post(`/invoices/${item.id}/issue`, {
+        receivable_account_id: String(f.get("receivable")),
+        revenue_account_id: String(f.get("revenue")),
+        ...(taxed
+          ? { tax_liability_account_id: String(f.get("taxLiability")) }
+          : {}),
+      });
       saved();
     } catch (reason) {
       setError(errorText(reason));
@@ -108,27 +1317,244 @@ function InvoiceIssue({ item, accounts, close, saved }: { item: Invoice | null; 
       setBusy(false);
     }
   };
-  return <Modal open={Boolean(item)} title="صدور نهایی فاکتور" onClose={close}><form className="form" onSubmit={submit}>{error && <div className="alert alert--error">{error}</div>}{!ready && <PrerequisiteNotice to="/accounts" linkLabel="مدیریت حساب‌ها">ابتدا حساب‌های فعال با نقش دریافتنی و درآمد{taxed ? " و بدهی مالیات" : ""} ثبت کنید.</PrerequisiteNotice>}<div className="alert alert--warning">صدور نهایی یک سند حسابداری ایجاد می‌کند و فاکتور پس از آن قابل ویرایش نیست.</div><p>حساب‌های ثبت سند فاکتور را انتخاب کنید.</p><Field label="حساب دریافتنی"><select name="receivable" required disabled={!ready || busy}><option value="">انتخاب کنید</option>{receivableAccounts.map((a) => <option value={a.id} key={a.id}>{a.code} · {a.name}</option>)}</select></Field><Field label="حساب فروش"><select name="revenue" required disabled={!ready || busy}><option value="">انتخاب کنید</option>{revenueAccounts.map((a) => <option value={a.id} key={a.id}>{a.code} · {a.name}</option>)}</select></Field>{taxed && <Field label="حساب بدهی مالیات"><select name="taxLiability" required disabled={!ready || busy}><option value="">انتخاب کنید</option>{taxAccounts.map((a) => <option value={a.id} key={a.id}>{a.code} · {a.name}</option>)}</select></Field>}<div className="form-actions"><button type="button" className="button button--secondary" onClick={close} disabled={busy}>انصراف</button><button className="button button--danger" disabled={!ready || busy}>{busy ? "در حال صدور…" : "صدور نهایی"}</button></div></form></Modal>;
+  return (
+    <Modal open={Boolean(item)} title="صدور نهایی فاکتور" onClose={close}>
+      <form className="form" onSubmit={submit}>
+        {error && <div className="alert alert--error">{error}</div>}
+        {!ready && (
+          <PrerequisiteNotice to="/accounts" linkLabel="مدیریت حساب‌ها">
+            ابتدا حساب‌های فعال با نقش دریافتنی و درآمد
+            {taxed ? " و بدهی مالیات" : ""} ثبت کنید.
+          </PrerequisiteNotice>
+        )}
+        <div className="alert alert--warning">
+          صدور نهایی یک سند حسابداری ایجاد می‌کند و فاکتور پس از آن قابل ویرایش
+          نیست.
+        </div>
+        <p>حساب‌های ثبت سند فاکتور را انتخاب کنید.</p>
+        <Field label="حساب دریافتنی">
+          <select name="receivable" required disabled={!ready || busy}>
+            <option value="">انتخاب کنید</option>
+            {receivableAccounts.map((a) => (
+              <option value={a.id} key={a.id}>
+                {a.code} · {a.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="حساب فروش">
+          <select name="revenue" required disabled={!ready || busy}>
+            <option value="">انتخاب کنید</option>
+            {revenueAccounts.map((a) => (
+              <option value={a.id} key={a.id}>
+                {a.code} · {a.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+        {taxed && (
+          <Field label="حساب بدهی مالیات">
+            <select name="taxLiability" required disabled={!ready || busy}>
+              <option value="">انتخاب کنید</option>
+              {taxAccounts.map((a) => (
+                <option value={a.id} key={a.id}>
+                  {a.code} · {a.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
+        <div className="form-actions">
+          <button
+            type="button"
+            className="button button--secondary"
+            onClick={close}
+            disabled={busy}
+          >
+            انصراف
+          </button>
+          <button className="button button--danger" disabled={!ready || busy}>
+            {busy ? "در حال صدور…" : "صدور نهایی"}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
 }
 
-export function PaymentsPage() { const { can } = useAuth(); const state = useAsync(async () => { const [payments, parties, invoices, accounts, categories] = await Promise.all([api.get<Payment[]>("/payments"), api.get<Party[]>("/parties"), api.get<Invoice[]>("/invoices"), api.get<Account[]>("/accounts"), api.get<AccountCategory[]>("/account-categories")]); return { payments, parties, invoices, accounts, categories }; }, []); const [create, setCreate] = useState(false); const [detail, setDetail] = useState<Payment | null>(null); const [post, setPost] = useState<Payment | null>(null); return <><PageHeader title="پرداخت‌ها" description="ثبت دریافت و تخصیص آن به فاکتورها" action={can("payments:write") && <button className="button button--primary" onClick={() => setCreate(true)}>ثبت دریافت جدید</button>}/>{state.loading ? <LoadingState/> : state.error ? <ErrorState message={state.error} retry={state.reload}/> : state.data?.payments.length ? <div className="table-wrap"><table><thead><tr><th>مرجع</th><th>طرف حساب</th><th>تاریخ</th><th>روش</th><th>مبلغ</th><th>وضعیت</th><th>عملیات</th></tr></thead><tbody>{state.data.payments.map((p) => <tr key={p.id}><td data-label="مرجع" dir="ltr"><strong>{p.reference}</strong></td><td data-label="طرف حساب">{state.data?.parties.find((x) => x.id === p.party_id)?.name}</td><td data-label="تاریخ"><DateText value={p.payment_date}/></td><td data-label="روش">{paymentMethodLabel(p.method)}</td><td data-label="مبلغ"><Money value={p.amount}/></td><td data-label="وضعیت"><StatusBadge value={p.status}/></td><td data-label="عملیات"><button className="text-button" onClick={() => setDetail(p)}>جزئیات</button>{p.status === "DRAFT" && can("payments:post") && <button className="text-button" onClick={() => setPost(p)}>ثبت نهایی</button>}</td></tr>)}</tbody></table></div> : <EmptyState title="دریافتی ثبت نشده است"/>}<PaymentCreate open={create} data={state.data} close={() => setCreate(false)} saved={() => { setCreate(false); void state.reload(); }}/><PaymentDetail item={detail} invoices={state.data?.invoices ?? []} close={() => setDetail(null)}/><PaymentPost item={post} accounts={state.data?.accounts ?? []} categories={state.data?.categories ?? []} close={() => setPost(null)} saved={() => { setPost(null); void state.reload(); }}/></>;
+export function PaymentsPage() {
+  const { can } = useAuth();
+  const state = useAsync(async () => {
+    const [payments, parties, invoices, accounts, categories] =
+      await Promise.all([
+        api.get<Payment[]>("/payments"),
+        api.get<Party[]>("/parties"),
+        api.get<Invoice[]>("/invoices"),
+        api.get<Account[]>("/accounts"),
+        api.get<AccountCategory[]>("/account-categories"),
+      ]);
+    return { payments, parties, invoices, accounts, categories };
+  }, []);
+  const [create, setCreate] = useState(false);
+  const [detail, setDetail] = useState<Payment | null>(null);
+  const [post, setPost] = useState<Payment | null>(null);
+  return (
+    <>
+      <PageHeader
+        title="پرداخت‌ها"
+        description="ثبت دریافت و تخصیص آن به فاکتورها"
+        action={
+          can("payments:write") && (
+            <button
+              className="button button--primary"
+              onClick={() => setCreate(true)}
+            >
+              ثبت دریافت جدید
+            </button>
+          )
+        }
+      />
+      {state.loading ? (
+        <LoadingState />
+      ) : state.error ? (
+        <ErrorState message={state.error} retry={state.reload} />
+      ) : state.data?.payments.length ? (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>مرجع</th>
+                <th>طرف حساب</th>
+                <th>تاریخ</th>
+                <th>روش</th>
+                <th>مبلغ</th>
+                <th>وضعیت</th>
+                <th>عملیات</th>
+              </tr>
+            </thead>
+            <tbody>
+              {state.data.payments.map((p) => (
+                <tr key={p.id}>
+                  <td data-label="مرجع" dir="ltr">
+                    <strong>{p.reference}</strong>
+                  </td>
+                  <td data-label="طرف حساب">
+                    {state.data?.parties.find((x) => x.id === p.party_id)?.name}
+                  </td>
+                  <td data-label="تاریخ">
+                    <DateText value={p.payment_date} />
+                  </td>
+                  <td data-label="روش">{paymentMethodLabel(p.method)}</td>
+                  <td data-label="مبلغ">
+                    <Money value={p.amount} />
+                  </td>
+                  <td data-label="وضعیت">
+                    <StatusBadge value={p.status} />
+                  </td>
+                  <td data-label="عملیات">
+                    <button
+                      className="text-button"
+                      onClick={() => setDetail(p)}
+                    >
+                      جزئیات
+                    </button>
+                    {p.status === "DRAFT" && can("payments:post") && (
+                      <button
+                        className="text-button"
+                        onClick={() => setPost(p)}
+                      >
+                        ثبت نهایی
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <EmptyState title="دریافتی ثبت نشده است" />
+      )}
+      <PaymentCreate
+        open={create}
+        data={state.data}
+        close={() => setCreate(false)}
+        saved={() => {
+          setCreate(false);
+          void state.reload();
+        }}
+      />
+      <PaymentDetail
+        item={detail}
+        invoices={state.data?.invoices ?? []}
+        close={() => setDetail(null)}
+      />
+      <PaymentPost
+        item={post}
+        accounts={state.data?.accounts ?? []}
+        categories={state.data?.categories ?? []}
+        close={() => setPost(null)}
+        saved={() => {
+          setPost(null);
+          void state.reload();
+        }}
+      />
+    </>
+  );
 }
-function PaymentCreate({ open, data, close, saved }: { open: boolean; data: { payments: Payment[]; parties: Party[]; invoices: Invoice[]; accounts: Account[] } | null; close: () => void; saved: () => void }) { const { t } = useBusiness();
-  const activeCustomers = data?.parties.filter((party) => party.is_customer && party.is_active) ?? [];
-  const openInvoices = data?.invoices.filter((invoice) => ["ISSUED", "PARTIALLY_PAID"].includes(invoice.status)) ?? [];
-  const customerCreditAccounts = data?.accounts.filter((account) => account.is_active && account.posting_role === "CUSTOMER_CREDIT") ?? [];
+function PaymentCreate({
+  open,
+  data,
+  close,
+  saved,
+}: {
+  open: boolean;
+  data: {
+    payments: Payment[];
+    parties: Party[];
+    invoices: Invoice[];
+    accounts: Account[];
+  } | null;
+  close: () => void;
+  saved: () => void;
+}) {
+  const { t } = useBusiness();
+  const activeCustomers =
+    data?.parties.filter((party) => party.is_customer && party.is_active) ?? [];
+  const openInvoices =
+    data?.invoices.filter((invoice) =>
+      ["ISSUED", "PARTIALLY_PAID"].includes(invoice.status),
+    ) ?? [];
+  const customerCreditAccounts =
+    data?.accounts.filter(
+      (account) =>
+        account.is_active && account.posting_role === "CUSTOMER_CREDIT",
+    ) ?? [];
   const [party, setParty] = useState("");
   const [date, setDate] = useState(todayIso());
+  const [checkDueDate, setCheckDueDate] = useState(todayIso());
   const [amount, setAmount] = useState("");
   const [method, setMethod] = useState("انتقال بانکی");
   const [customerCreditAccount, setCustomerCreditAccount] = useState("");
-  const [allocations, setAllocations] = useState<Allocation[]>([{ invoice_id: "", amount: "0" }]);
+  const [allocations, setAllocations] = useState<Allocation[]>([
+    { invoice_id: "", amount: "0" },
+  ]);
   const [error, setError] = useState("");
-  const eligible = openInvoices.filter((invoice) => invoice.customer_id === party);
-  const total = allocations.reduce((sum, allocation) => sum + Number(allocation.amount), 0);
+  const eligible = openInvoices.filter(
+    (invoice) => invoice.customer_id === party,
+  );
+  const total = allocations.reduce(
+    (sum, allocation) => sum + Number(allocation.amount),
+    0,
+  );
   const excess = Math.max(0, Number(amount) - total);
   const overAllocated = total - Number(amount) > 0.001;
-  const prerequisitesReady = activeCustomers.length > 0 && party !== "" && eligible.length > 0 && !overAllocated && (excess <= 0.001 || customerCreditAccount !== "");
+  const prerequisitesReady =
+    activeCustomers.length > 0 &&
+    party !== "" &&
+    eligible.length > 0 &&
+    !overAllocated &&
+    (excess <= 0.001 || customerCreditAccount !== "");
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (overAllocated) {
@@ -144,7 +1570,9 @@ function PaymentCreate({ open, data, close, saved }: { open: boolean; data: { pa
         reference: String(form.get("reference")),
         method,
         sayad_id: method === "چک" ? String(form.get("sayadId")) || null : null,
-        customer_credit_account_id: excess > 0.001 ? customerCreditAccount : null,
+        check_due_date: method === "چک" ? checkDueDate : null,
+        customer_credit_account_id:
+          excess > 0.001 ? customerCreditAccount : null,
         allocations,
       });
       saved();
@@ -152,21 +1580,300 @@ function PaymentCreate({ open, data, close, saved }: { open: boolean; data: { pa
       setError(errorText(reason));
     }
   };
-  return <Modal open={open} title="ثبت دریافت جدید" onClose={close} wide><form className="form" onSubmit={submit}>{error && <div className="alert alert--error">{error}</div>}{activeCustomers.length === 0 && <PrerequisiteNotice to="/parties" linkLabel="ثبت طرف حساب">ابتدا باید حداقل یک مشتری فعال ثبت کنید.</PrerequisiteNotice>}{activeCustomers.length > 0 && openInvoices.length === 0 && <PrerequisiteNotice to="/invoices" linkLabel="مدیریت فاکتورها">ابتدا باید حداقل یک فاکتور صادرشده با مانده قابل دریافت داشته باشید.</PrerequisiteNotice>}{party !== "" && openInvoices.length > 0 && eligible.length === 0 && <PrerequisiteNotice to="/invoices" linkLabel="مشاهده فاکتورها">برای این مشتری فاکتور صادرشده با مانده قابل دریافت وجود ندارد.</PrerequisiteNotice>}<div className="form-grid form-grid--3"><Field label="طرف حساب"><PartySelect parties={activeCustomers} value={party} placeholder={t("انتخاب مشتری")} onChange={(id) => { setParty(id); setAllocations([{ invoice_id: "", amount: "0" }]); }}/></Field><DateField label="تاریخ دریافت" value={date} onChange={setDate} required/><Field label="مبلغ دریافت (ریال)"><MoneyInput min="0.01" value={amount} onValueChange={setAmount} required/></Field><Field label="شماره مرجع"><input name="reference" dir="ltr" required/></Field><Field label="روش پرداخت"><select value={method} onChange={(event) => setMethod(event.target.value)}><option>انتقال بانکی</option><option>کارت‌خوان</option><option>نقدی</option><option>چک</option></select></Field>{method === "چک" && <Field label="شناسه صیادی (اختیاری)"><input name="sayadId" dir="ltr" maxLength={100}/></Field>}</div><h3>تخصیص به فاکتورها</h3>{allocations.map((allocation, index) => <div className="allocation-row" key={index}><Field label="فاکتور"><select value={allocation.invoice_id} onChange={(event) => setAllocations((old) => old.map((item, i) => i === index ? { ...item, invoice_id: event.target.value } : item))} required disabled={party === "" || eligible.length === 0}><option value="">انتخاب فاکتور</option>{eligible.map((invoice) => <option key={invoice.id} value={invoice.id}>{invoice.invoice_number} · مانده {formatMoney(invoice.balance_due)}</option>)}</select></Field><Field label="مبلغ تخصیص"><MoneyInput min="0.01" value={allocation.amount} onValueChange={(value) => setAllocations((old) => old.map((item, i) => i === index ? { ...item, amount: value } : item))} required/></Field><button type="button" className="icon-button" disabled={allocations.length === 1} onClick={() => setAllocations((old) => old.filter((_, i) => i !== index))}>×</button></div>)}<button type="button" className="text-button" onClick={() => setAllocations((old) => [...old, { invoice_id: "", amount: "0" }])}>+ افزودن تخصیص</button><p className="allocation-total">جمع تخصیص: <Money value={total}/></p>{overAllocated && <div className="alert alert--error">جمع تخصیص‌ها نمی‌تواند بیشتر از مبلغ دریافت باشد.</div>}{excess > 0.001 && <><div className="alert alert--warning">مبلغ اضافه: <Money value={excess}/> — به عنوان اعتبار مشتری ثبت می‌شود.</div>{customerCreditAccounts.length === 0 ? <PrerequisiteNotice to="/accounts" linkLabel="مدیریت حساب‌ها">ابتدا یک حساب فعال با نقش اعتبار مشتری ثبت کنید.</PrerequisiteNotice> : <Field label="حساب اعتبار مشتری"><select value={customerCreditAccount} onChange={(event) => setCustomerCreditAccount(event.target.value)} required><option value="">انتخاب کنید</option>{customerCreditAccounts.map((account) => <option key={account.id} value={account.id}>{account.code} · {account.name}</option>)}</select></Field>}</>}<div className="form-actions"><button type="button" className="button button--secondary" onClick={close}>انصراف</button><button className="button button--primary" disabled={!prerequisitesReady}>ذخیره پیش‌نویس</button></div></form></Modal>;
+  return (
+    <Modal open={open} title="ثبت دریافت جدید" onClose={close} wide>
+      <form className="form" onSubmit={submit}>
+        {error && <div className="alert alert--error">{error}</div>}
+        {activeCustomers.length === 0 && (
+          <PrerequisiteNotice to="/parties" linkLabel="ثبت طرف حساب">
+            ابتدا باید حداقل یک مشتری فعال ثبت کنید.
+          </PrerequisiteNotice>
+        )}
+        {activeCustomers.length > 0 && openInvoices.length === 0 && (
+          <PrerequisiteNotice to="/invoices" linkLabel="مدیریت فاکتورها">
+            ابتدا باید حداقل یک فاکتور صادرشده با مانده قابل دریافت داشته باشید.
+          </PrerequisiteNotice>
+        )}
+        {party !== "" && openInvoices.length > 0 && eligible.length === 0 && (
+          <PrerequisiteNotice to="/invoices" linkLabel="مشاهده فاکتورها">
+            برای این مشتری فاکتور صادرشده با مانده قابل دریافت وجود ندارد.
+          </PrerequisiteNotice>
+        )}
+        <div className="form-grid form-grid--3">
+          <Field label="طرف حساب">
+            <PartySelect
+              parties={activeCustomers}
+              value={party}
+              placeholder={t("انتخاب مشتری")}
+              onChange={(id) => {
+                setParty(id);
+                setAllocations([{ invoice_id: "", amount: "0" }]);
+              }}
+            />
+          </Field>
+          <DateField
+            label="تاریخ دریافت"
+            value={date}
+            onChange={setDate}
+            required
+          />
+          <Field label="مبلغ دریافت (ریال)">
+            <MoneyInput
+              min="0.01"
+              value={amount}
+              onValueChange={setAmount}
+              required
+            />
+          </Field>
+          <Field label="شماره مرجع">
+            <input name="reference" dir="ltr" required />
+          </Field>
+          <Field label="روش پرداخت">
+            <select
+              value={method}
+              onChange={(event) => setMethod(event.target.value)}
+            >
+              <option>انتقال بانکی</option>
+              <option>کارت‌خوان</option>
+              <option>نقدی</option>
+              <option>چک</option>
+            </select>
+          </Field>
+          {method === "چک" && (
+            <>
+              <Field label="شناسه صیادی (اختیاری)">
+                <input name="sayadId" dir="ltr" maxLength={100} />
+              </Field>
+              <DateField
+                label="تاریخ سررسید چک"
+                value={checkDueDate}
+                onChange={setCheckDueDate}
+                required
+              />
+            </>
+          )}
+        </div>
+        <h3>تخصیص به فاکتورها</h3>
+        {allocations.map((allocation, index) => (
+          <div className="allocation-row" key={index}>
+            <Field label="فاکتور">
+              <select
+                value={allocation.invoice_id}
+                onChange={(event) =>
+                  setAllocations((old) =>
+                    old.map((item, i) =>
+                      i === index
+                        ? { ...item, invoice_id: event.target.value }
+                        : item,
+                    ),
+                  )
+                }
+                required
+                disabled={party === "" || eligible.length === 0}
+              >
+                <option value="">انتخاب فاکتور</option>
+                {eligible.map((invoice) => (
+                  <option key={invoice.id} value={invoice.id}>
+                    {invoice.invoice_number} · مانده{" "}
+                    {formatMoney(invoice.balance_due)}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="مبلغ تخصیص">
+              <MoneyInput
+                min="0.01"
+                value={allocation.amount}
+                onValueChange={(value) =>
+                  setAllocations((old) =>
+                    old.map((item, i) =>
+                      i === index ? { ...item, amount: value } : item,
+                    ),
+                  )
+                }
+                required
+              />
+            </Field>
+            <button
+              type="button"
+              className="icon-button"
+              disabled={allocations.length === 1}
+              onClick={() =>
+                setAllocations((old) => old.filter((_, i) => i !== index))
+              }
+            >
+              ×
+            </button>
+          </div>
+        ))}
+        <button
+          type="button"
+          className="text-button"
+          onClick={() =>
+            setAllocations((old) => [...old, { invoice_id: "", amount: "0" }])
+          }
+        >
+          + افزودن تخصیص
+        </button>
+        <p className="allocation-total">
+          جمع تخصیص: <Money value={total} />
+        </p>
+        {overAllocated && (
+          <div className="alert alert--error">
+            جمع تخصیص‌ها نمی‌تواند بیشتر از مبلغ دریافت باشد.
+          </div>
+        )}
+        {excess > 0.001 && (
+          <>
+            <div className="alert alert--warning">
+              مبلغ اضافه: <Money value={excess} /> — به عنوان اعتبار مشتری ثبت
+              می‌شود.
+            </div>
+            {customerCreditAccounts.length === 0 ? (
+              <PrerequisiteNotice to="/accounts" linkLabel="مدیریت حساب‌ها">
+                ابتدا یک حساب فعال با نقش اعتبار مشتری ثبت کنید.
+              </PrerequisiteNotice>
+            ) : (
+              <Field label="حساب اعتبار مشتری">
+                <select
+                  value={customerCreditAccount}
+                  onChange={(event) =>
+                    setCustomerCreditAccount(event.target.value)
+                  }
+                  required
+                >
+                  <option value="">انتخاب کنید</option>
+                  {customerCreditAccounts.map((account) => (
+                    <option key={account.id} value={account.id}>
+                      {account.code} · {account.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            )}
+          </>
+        )}
+        <div className="form-actions">
+          <button
+            type="button"
+            className="button button--secondary"
+            onClick={close}
+          >
+            انصراف
+          </button>
+          <button
+            className="button button--primary"
+            disabled={!prerequisitesReady}
+          >
+            ذخیره پیش‌نویس
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
 }
-function PaymentDetail({ item, invoices, close }: { item: Payment | null; invoices: Invoice[]; close: () => void }) {
-  const allocated = item?.allocations.reduce((sum, allocation) => sum + Number(allocation.amount), 0) ?? 0;
+function PaymentDetail({
+  item,
+  invoices,
+  close,
+}: {
+  item: Payment | null;
+  invoices: Invoice[];
+  close: () => void;
+}) {
+  const allocated =
+    item?.allocations.reduce(
+      (sum, allocation) => sum + Number(allocation.amount),
+      0,
+    ) ?? 0;
   const customerCredit = Math.max(0, Number(item?.amount ?? 0) - allocated);
-  return <DetailModal open={Boolean(item)} title={`دریافت ${item?.reference ?? ""}`} close={close}>{item && <><div className="detail-summary"><span>تاریخ <DateText value={item.payment_date}/></span><span>روش <strong>{paymentMethodLabel(item.method)}</strong></span>{item.sayad_id && <span>شناسه صیادی <strong dir="ltr">{item.sayad_id}</strong></span>}<span>مبلغ <Money value={item.amount}/></span>{customerCredit > 0 && <span>اعتبار مشتری <Money value={customerCredit}/></span>}<StatusBadge value={item.status}/></div><h3>تخصیص‌ها</h3><div className="compact-list">{item.allocations.map((allocation, index) => <div key={allocation.id ?? index}><span>فاکتور {invoices.find((invoice) => invoice.id === allocation.invoice_id)?.invoice_number ?? allocation.invoice_id}</span><Money value={allocation.amount}/></div>)}</div></>}</DetailModal>;
+  return (
+    <DetailModal
+      open={Boolean(item)}
+      title={`دریافت ${item?.reference ?? ""}`}
+      close={close}
+    >
+      {item && (
+        <>
+          <div className="detail-summary">
+            <span>
+              تاریخ <DateText value={item.payment_date} />
+            </span>
+            <span>
+              روش <strong>{paymentMethodLabel(item.method)}</strong>
+            </span>
+            {item.check_due_date && (
+              <span>
+                سررسید چک <DateText value={item.check_due_date} />
+              </span>
+            )}
+            {item.sayad_id && (
+              <span>
+                شناسه صیادی <strong dir="ltr">{item.sayad_id}</strong>
+              </span>
+            )}
+            <span>
+              مبلغ <Money value={item.amount} />
+            </span>
+            {customerCredit > 0 && (
+              <span>
+                اعتبار مشتری <Money value={customerCredit} />
+              </span>
+            )}
+            <StatusBadge value={item.status} />
+          </div>
+          <h3>تخصیص‌ها</h3>
+          <div className="compact-list">
+            {item.allocations.map((allocation, index) => (
+              <div key={allocation.id ?? index}>
+                <span>
+                  فاکتور{" "}
+                  {invoices.find(
+                    (invoice) => invoice.id === allocation.invoice_id,
+                  )?.invoice_number ?? allocation.invoice_id}
+                </span>
+                <Money value={allocation.amount} />
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </DetailModal>
+  );
 }
-function PaymentPost({ item, accounts, close, saved }: { item: Payment | null; accounts: Account[]; categories: AccountCategory[]; close: () => void; saved: () => void }) {
-  const cashAccounts = accounts.filter((account) => account.is_active && account.posting_role === "CASH");
-  const receivableAccounts = accounts.filter((account) => account.is_active && account.posting_role === "RECEIVABLE");
-  const customerCreditAccounts = accounts.filter((account) => account.is_active && account.posting_role === "CUSTOMER_CREDIT");
-  const allocated = item?.allocations.reduce((sum, allocation) => sum + Number(allocation.amount), 0) ?? 0;
+function PaymentPost({
+  item,
+  accounts,
+  close,
+  saved,
+}: {
+  item: Payment | null;
+  accounts: Account[];
+  categories: AccountCategory[];
+  close: () => void;
+  saved: () => void;
+}) {
+  const cashAccounts = accounts.filter(
+    (account) => account.is_active && account.posting_role === "CASH",
+  );
+  const receivableAccounts = accounts.filter(
+    (account) => account.is_active && account.posting_role === "RECEIVABLE",
+  );
+  const customerCreditAccounts = accounts.filter(
+    (account) =>
+      account.is_active && account.posting_role === "CUSTOMER_CREDIT",
+  );
+  const allocated =
+    item?.allocations.reduce(
+      (sum, allocation) => sum + Number(allocation.amount),
+      0,
+    ) ?? 0;
   const excess = Math.max(0, Number(item?.amount ?? 0) - allocated);
   const needsCustomerCredit = excess > 0.001;
-  const ready = cashAccounts.length > 0 && receivableAccounts.length > 0 && (!needsCustomerCredit || customerCreditAccounts.length > 0);
+  const ready =
+    cashAccounts.length > 0 &&
+    receivableAccounts.length > 0 &&
+    (!needsCustomerCredit || customerCreditAccounts.length > 0);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const submit = async (event: FormEvent<HTMLFormElement>) => {
@@ -185,7 +1892,9 @@ function PaymentPost({ item, accounts, close, saved }: { item: Payment | null; a
       await api.post(`/payments/${item.id}/post`, {
         cash_account_id: cash,
         receivable_account_id: receivable,
-        ...(needsCustomerCredit ? { customer_credit_account_id: String(form.get("customerCredit")) } : {}),
+        ...(needsCustomerCredit
+          ? { customer_credit_account_id: String(form.get("customerCredit")) }
+          : {}),
       });
       saved();
     } catch (reason) {
@@ -194,5 +1903,77 @@ function PaymentPost({ item, accounts, close, saved }: { item: Payment | null; a
       setBusy(false);
     }
   };
-  return <Modal open={Boolean(item)} title="ثبت نهایی دریافت" onClose={close}><form className="form" onSubmit={submit}>{error && <div className="alert alert--error">{error}</div>}{!ready && <PrerequisiteNotice to="/accounts" linkLabel="مدیریت حساب‌ها">ابتدا حساب‌های فعال با نقش نقد/بانک و دریافتنی{needsCustomerCredit ? " و اعتبار مشتری" : ""} ثبت کنید.</PrerequisiteNotice>}<div className="alert alert--warning">ثبت نهایی دریافت یک سند حسابداری ایجاد می‌کند و قابل بازگشت به پیش‌نویس نیست.</div>{needsCustomerCredit && <div className="alert alert--warning">مبلغ اضافه: <Money value={excess}/> — در حساب بدهی اعتبار مشتری ثبت می‌شود.</div>}<Field label="حساب نقد/بانک"><select name="cash" required disabled={!ready || busy}><option value="">انتخاب کنید</option>{cashAccounts.map((account) => <option key={account.id} value={account.id}>{account.code} · {account.name}</option>)}</select></Field><Field label="حساب دریافتنی"><select name="receivable" required disabled={!ready || busy}><option value="">انتخاب کنید</option>{receivableAccounts.map((account) => <option key={account.id} value={account.id}>{account.code} · {account.name}</option>)}</select></Field>{needsCustomerCredit && <Field label="حساب اعتبار مشتری"><select name="customerCredit" defaultValue={item?.customer_credit_account_id ?? ""} required disabled={!ready || busy}><option value="">انتخاب کنید</option>{customerCreditAccounts.map((account) => <option key={account.id} value={account.id}>{account.code} · {account.name}</option>)}</select></Field>}<div className="form-actions"><button type="button" className="button button--secondary" onClick={close} disabled={busy}>انصراف</button><button className="button button--danger" disabled={!ready || busy}>{busy ? "در حال ثبت…" : "ثبت نهایی"}</button></div></form></Modal>;
+  return (
+    <Modal open={Boolean(item)} title="ثبت نهایی دریافت" onClose={close}>
+      <form className="form" onSubmit={submit}>
+        {error && <div className="alert alert--error">{error}</div>}
+        {!ready && (
+          <PrerequisiteNotice to="/accounts" linkLabel="مدیریت حساب‌ها">
+            ابتدا حساب‌های فعال با نقش نقد/بانک و دریافتنی
+            {needsCustomerCredit ? " و اعتبار مشتری" : ""} ثبت کنید.
+          </PrerequisiteNotice>
+        )}
+        <div className="alert alert--warning">
+          ثبت نهایی دریافت یک سند حسابداری ایجاد می‌کند و قابل بازگشت به
+          پیش‌نویس نیست.
+        </div>
+        {needsCustomerCredit && (
+          <div className="alert alert--warning">
+            مبلغ اضافه: <Money value={excess} /> — در حساب بدهی اعتبار مشتری ثبت
+            می‌شود.
+          </div>
+        )}
+        <Field label="حساب نقد/بانک">
+          <select name="cash" required disabled={!ready || busy}>
+            <option value="">انتخاب کنید</option>
+            {cashAccounts.map((account) => (
+              <option key={account.id} value={account.id}>
+                {account.code} · {account.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="حساب دریافتنی">
+          <select name="receivable" required disabled={!ready || busy}>
+            <option value="">انتخاب کنید</option>
+            {receivableAccounts.map((account) => (
+              <option key={account.id} value={account.id}>
+                {account.code} · {account.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+        {needsCustomerCredit && (
+          <Field label="حساب اعتبار مشتری">
+            <select
+              name="customerCredit"
+              defaultValue={item?.customer_credit_account_id ?? ""}
+              required
+              disabled={!ready || busy}
+            >
+              <option value="">انتخاب کنید</option>
+              {customerCreditAccounts.map((account) => (
+                <option key={account.id} value={account.id}>
+                  {account.code} · {account.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
+        <div className="form-actions">
+          <button
+            type="button"
+            className="button button--secondary"
+            onClick={close}
+            disabled={busy}
+          >
+            انصراف
+          </button>
+          <button className="button button--danger" disabled={!ready || busy}>
+            {busy ? "در حال ثبت…" : "ثبت نهایی"}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
 }

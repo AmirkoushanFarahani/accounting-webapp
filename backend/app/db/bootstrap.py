@@ -43,6 +43,10 @@ PERMISSIONS = {
     "bill_payments:post": "Post supplier bill payments to the ledger",
     "periods:read": "View financial periods",
     "periods:manage": "Create and close financial periods",
+    "school:read": "View school courses, students, enrolments, and payment plans",
+    "school:manage": "Manage school courses, fees, discount codes, and school staff",
+    "school:enroll": "Register students and record their payment plans",
+    "school:payments": "Update school check and installment payment statuses",
 }
 
 ACCOUNTING_READ = {
@@ -77,14 +81,25 @@ ROLE_PERMISSIONS = {
     "ADMIN": set(PERMISSIONS),
     "OWNER": {name for name in PERMISSIONS if not name.startswith("users:")},
     "ACCOUNTANT": {
-        "accounting:read", "accounting:write", "reports:read", "ml:read",
-        "ml:predict", "ml:feedback",
+        "accounting:read",
+        "accounting:write",
+        "reports:read",
+        "ml:read",
+        "ml:predict",
+        "ml:feedback",
     }
     | ACCOUNTING_WRITE,
     "MANAGER": {
-        "users:read", "accounting:read", "reports:read", "ml:read",
-        "ml:predict", "ml:feedback",
-    } | ACCOUNTING_READ,
+        "users:read",
+        "accounting:read",
+        "reports:read",
+        "ml:read",
+        "ml:predict",
+        "ml:feedback",
+    }
+    | ACCOUNTING_READ
+    | {"school:read", "school:manage", "school:enroll", "school:payments"},
+    "EMPLOYEE": {"school:read", "school:enroll", "school:payments"},
     "VIEWER": {"accounting:read", "reports:read", "ml:read"} | ACCOUNTING_READ,
 }
 
@@ -93,6 +108,7 @@ ROLE_DESCRIPTIONS = {
     "OWNER": "Full control of own workspace without user administration",
     "ACCOUNTANT": "Accounting operations",
     "MANAGER": "Management oversight",
+    "EMPLOYEE": "School registration employee",
     "VIEWER": "Read-only business access",
 }
 

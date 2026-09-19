@@ -2,7 +2,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
 
 class ORMModel(BaseModel):
@@ -265,6 +265,7 @@ class PaymentCreate(BaseModel):
     reference: str = Field(min_length=1, max_length=100)
     method: str = Field(min_length=1, max_length=50)
     sayad_id: str | None = Field(default=None, max_length=100)
+    check_due_date: date | None = None
     customer_credit_account_id: UUID | None = None
     allocations: list[AllocationCreate] = Field(min_length=1)
 
@@ -272,6 +273,12 @@ class PaymentCreate(BaseModel):
     @classmethod
     def empty_sayad_is_none(cls, value: object) -> object:
         return value.strip() or None if isinstance(value, str) else value
+
+    @model_validator(mode="after")
+    def check_requires_due_date(self) -> "PaymentCreate":
+        if self.method.strip().upper() in {"CHECK", "چک"} and self.check_due_date is None:
+            raise ValueError("A check payment requires a due date")
+        return self
 
 
 class AllocationRead(ORMModel):
@@ -288,6 +295,7 @@ class PaymentRead(ORMModel):
     reference: str
     method: str
     sayad_id: str | None
+    check_due_date: date | None
     customer_credit_account_id: UUID | None
     status: str
     journal_id: UUID | None
@@ -360,12 +368,19 @@ class BillPaymentCreate(BaseModel):
     reference: str = Field(min_length=1, max_length=100)
     method: str = Field(min_length=1, max_length=50)
     sayad_id: str | None = Field(default=None, max_length=100)
+    check_due_date: date | None = None
     allocations: list[BillPaymentAllocationCreate] = Field(min_length=1)
 
     @field_validator("sayad_id", mode="before")
     @classmethod
     def empty_sayad_is_none(cls, value: object) -> object:
         return value.strip() or None if isinstance(value, str) else value
+
+    @model_validator(mode="after")
+    def check_requires_due_date(self) -> "BillPaymentCreate":
+        if self.method.strip().upper() in {"CHECK", "چک"} and self.check_due_date is None:
+            raise ValueError("A check payment requires a due date")
+        return self
 
 
 class BillPaymentAllocationRead(ORMModel):
@@ -382,6 +397,7 @@ class BillPaymentRead(ORMModel):
     reference: str
     method: str
     sayad_id: str | None
+    check_due_date: date | None
     status: str
     journal_id: UUID | None
     allocations: list[BillPaymentAllocationRead]
